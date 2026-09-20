@@ -1,6 +1,6 @@
 # SayIt Watch Transport project progress
 
-当前工作：用户批准 `1C-D-04@R7`，PM 已准备任务包与 `codex/watch-connection-r7` 分支，待发送 D。前台连接恢复、显式选择、当前 IP 与统一自包含便携包均待实现和独立验收。当前唯一任务版本见 `HANDOFF.md` 顶部。
+当前工作：用户批准 `1C-D-04@R7`，PM 任务包提交 `371ddc3`，已发送到 D 原对话并核对消息入列及生成状态。D 在 `codex/watch-connection-r7` 开发；前台连接恢复、显式选择、当前 IP 与统一自包含便携包均待交付和独立验收。当前唯一任务版本与派发证据见 `HANDOFF.md` 顶部。
 
 2026-09-20 同步状态：已通过 PR #4 合入原有公开仓库 `Suzixuan/SayIt-Watch` 的 `main`，合并提交 `b561dc6d64f28199e1ba2105a2b407ac0ccc57cb`。新版源码、手表首页与截图已在默认分支，原历史保留；尚未发布对应安装包。交接方式见 `HANDOFF.md` 顶部。阶段 12 双电脑端到端验收仍未完成。
 
@@ -31,9 +31,9 @@ Delivery 1C Repair 1 (D, 2026-09-15, contract `docs/DELIVERY-1C-D-REPAIR-1.md`):
 | Experience | 7B | dev.3 minimalist Watch UI | ☑ | 🟢 PM accepted | Colleague D | Commit `516cde9`; Config/Ready/Recording only, silent one-shot upload, real-device screenshots and one real Watch→ASR→Paste closure |
 | Acceptance | 8 | Ten consecutive real end-to-end runs | ☐ | ⚪ Deferred to normal use | User | User will accumulate consecutive real-use evidence and Stop→Paste latency during normal use; no dedicated test session now |
 | Security | 9 | Repository and runtime security hardening | ☐ | 🔵 PM re-review — repair required | PM | `83056ab` + `a7ddcac` are on `main`; CodeQL succeeds and GitHub protections are enabled. Remaining blockers: zero-token loopback behavior conflicts with the documented local default; diagnostics `timeline.json` still derives titles from raw logs and can retain transcript text; wildcard Watch bind remains an unresolved product/security exception. |
-| Packaging | 10 | Self-contained silent Windows portable build and Release | ☐ | ⚪ R7 统一测试便携包待发送；正式 Release 仍待执行 | Colleague D | 同一 ZIP 用于台式机/笔记本，嵌入前端、不依赖 Node/源码服务；保留 Debug 安全边界。见 HANDOFF.md 当前任务，不能以测试包关闭正式 Release。 |
+| Packaging | 10 | Self-contained silent Windows portable build and Release | ☐ | 🔵 R7 统一测试便携包开发中；正式 Release 仍待执行 | Colleague D | 同一 ZIP 用于台式机/笔记本，嵌入前端、不依赖 Node/源码服务；保留 Debug 安全边界。见 HANDOFF.md 当前任务，不能以测试包关闭正式 Release。 |
 | Experience | 11 | Optional Wear OS Tile card | ☐ | ⚪ Deferred | Colleague D | Initial Tiles 1.2/1.4 implementation did not compile and was reverted; current tree is clean and contains no Tile feature. This is outside the core verified flow. |
-| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | ⚪ R7 全流程返修待发送 | Colleague D | 晚启动恢复、重复搜索、设置不丢目标、当前 IP、双电脑明确切换及录音链路；R4 UI 基线保留。PM 按当前任务 A–H 独立验收，未通过不关闭。见 HANDOFF.md。 |
+| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔵 R7 全流程返修中 | Colleague D | 晚启动恢复、重复搜索、设置不丢目标、当前 IP、双电脑明确切换及录音链路；R4 UI 基线保留。PM 按当前任务 A–H 独立验收，未通过不关闭。见 HANDOFF.md。 |
 
 Current external slice: R7 连接恢复与统一便携包，派发状态以 HANDOFF.md 顶部为准。D 仅开发并交付，PM 独立验收；历史单电脑成功不能替代本轮启动顺序、当前目标、双电脑和统一包验收。十连测、正式安全/Release 和 Wear Tile 仍独立开放。
 
