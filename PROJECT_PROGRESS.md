@@ -1,8 +1,8 @@
 # SayIt Watch Transport project progress
 
-2026-09-20 同步状态：用户已确认同步到原有公开仓库 `Suzixuan/SayIt-Watch`。`codex/watch-sync-20260920` 基于原 `main` 导入已审核源码、手表首页与截图，保留原提交历史；以 PR 交付，尚未合并或发布安装包。交接方式见 `HANDOFF.md` 顶部。阶段 12 双电脑端到端验收仍未完成。
+2026-09-20 同步状态：已通过 PR #4 合入原有公开仓库 `Suzixuan/SayIt-Watch` 的 `main`，合并提交 `b561dc6d64f28199e1ba2105a2b407ac0ccc57cb`。新版源码、手表首页与截图已在默认分支，原历史保留；尚未发布对应安装包。交接方式见 `HANDOFF.md` 顶部。阶段 12 双电脑端到端验收仍未完成。
 
-当前 UI 与 GitHub 交接：PM `1C-PM-UI-01@R4` 将「已连接电脑」光学居中，198/198 单测、lint 0 error、Debug build 通过；保留数据装表后真机截图与预览逐像素一致，其他表盘区域 0 像素变化。README 已改为手表中心并采用手表 Logo/真机图，但误推到新建的私有 `Suzixuan/Saylt`；用户原有公开仓库已更名为 `Suzixuan/SayIt-Watch`，新版尚未同步，且两边 Git 历史无共同祖先，禁止强推覆盖。发布状态见 `HANDOFF.md`。双电脑自动发现/切换/录音仍未端到端验收，阶段 12 未完成。
+当前 UI 与 GitHub 交接：PM `1C-PM-UI-01@R4` 将「已连接电脑」光学居中，198/198 单测、lint 0 error、Debug build 通过；保留数据装表后真机截图与预览逐像素一致，其他表盘区域 0 像素变化。README 已改为手表中心并采用手表 Logo/真机图，且已同步到原公开仓库 `main`。发布状态见 `HANDOFF.md`。双电脑自动发现/切换/录音仍未端到端验收，阶段 12 未完成。
 
 当前 UI 调整：用户确认 `design/watch-ui/0.3.0-dev.1-candidate.3`，PM `1C-PM-UI-01@R3` 已限域改为圆屏双行设置菜单，保留 R2 原版 Ready；198/198 单测、lint 0 error、Debug build通过，保留数据装表。真机 Ready 与 R2 冻结截图 SHA-256 完全一致，菜单关闭/切换选择器/连接设置入口均通过局部验收。证据见 `HANDOFF.md`、`docs/DELIVERY-1C-PM-UI-SETTINGS-R3.md`。笔记本不在线，两电脑自动发现/选择/换机录音仍未验，阶段 12 未完成。
 
