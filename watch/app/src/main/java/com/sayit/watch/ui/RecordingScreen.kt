@@ -30,7 +30,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,9 +60,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.sayit.watch.R
+import com.sayit.watch.net.DiscoveryState
 import com.sayit.watch.recording.WavWriter
 import com.sayit.watch.settings.DestinationValidator
 import com.sayit.watch.settings.DevTokenValidator
@@ -67,9 +72,10 @@ import com.sayit.watch.settings.SettingsStore
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** 0.2.0-dev.3 Watch presentation layer; recording and transport logic stay untouched. */
+/** 0.2.0-dev.4 Watch presentation layer; recording and transport logic stay untouched. */
 private val SayItBlue = Color(0xFF1976E9)
 private val RecordingRed = Color(0xFFE14B52)
+private val WarningRed = Color(0xFFE0A24B)
 private val FieldSurface = Color(0xFF252A34)
 private val PanelSurface = Color(0xFF20252E)
 private val MutedText = Color(0xFFB5BFCC)
@@ -119,7 +125,7 @@ private fun SmallIconAction(label: String, icon: IconType, onClick: () -> Unit) 
     }
 }
 
-private enum class IconType { MICROPHONE, REFRESH, SETTINGS, CLOSE }
+private enum class IconType { MICROPHONE, REFRESH, SETTINGS, CLOSE, SWITCH, SLIDERS }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawIcon(type: IconType, color: Color) {
     val w = size.width
@@ -150,17 +156,48 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawIcon(type: Icon
             drawLine(color, Offset(w * .25f, h * .25f), Offset(w * .75f, h * .75f), stroke.width, StrokeCap.Round)
             drawLine(color, Offset(w * .75f, h * .25f), Offset(w * .25f, h * .75f), stroke.width, StrokeCap.Round)
         }
+        IconType.SWITCH -> {
+            drawLine(color, Offset(w * .16f, h * .32f), Offset(w * .84f, h * .32f), stroke.width, StrokeCap.Round)
+            drawLine(color, Offset(w * .72f, h * .18f), Offset(w * .84f, h * .32f), stroke.width, StrokeCap.Round)
+            drawLine(color, Offset(w * .72f, h * .46f), Offset(w * .84f, h * .32f), stroke.width, StrokeCap.Round)
+            drawLine(color, Offset(w * .84f, h * .68f), Offset(w * .16f, h * .68f), stroke.width, StrokeCap.Round)
+            drawLine(color, Offset(w * .28f, h * .54f), Offset(w * .16f, h * .68f), stroke.width, StrokeCap.Round)
+            drawLine(color, Offset(w * .28f, h * .82f), Offset(w * .16f, h * .68f), stroke.width, StrokeCap.Round)
+        }
+        IconType.SLIDERS -> {
+            drawLine(color, Offset(w * .12f, h * .33f), Offset(w * .88f, h * .33f), stroke.width, StrokeCap.Round)
+            drawLine(color, Offset(w * .12f, h * .67f), Offset(w * .88f, h * .67f), stroke.width, StrokeCap.Round)
+            drawCircle(color, w * .10f, Offset(w * .40f, h * .33f))
+            drawCircle(color, w * .10f, Offset(w * .68f, h * .67f))
+        }
     }
 }
 
 @Composable
 fun RecordingScreen(viewModel: RecordingViewModel, settings: SettingsStore, hasPermission: Boolean, onRequestPermission: () -> Unit) {
     val ui by viewModel.ui.collectAsState()
+    val discovery by viewModel.discovery.collectAsState()
+    val canRecord by viewModel.canRecord.collectAsState()
+    // Delivery 1C lifecycle (Repair 2 必修 2): entering Ready only *asks* the
+    // ViewModel/engine whether a resolution is needed. When a verified target
+    // already exists (including right after a manual probe) the call is a no-op
+    // instead of a run that would clear the target and re-discover. Leaving the
+    // screen stops everything, so a late run cannot survive the page.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.stopDiscovery() }
+    }
+    LaunchedEffect(ui.screen) {
+        when (ui.screen) {
+            WatchUiState.Screen.READY -> viewModel.onReadyEntered()
+            WatchUiState.Screen.CONFIG -> viewModel.openConfig()
+            WatchUiState.Screen.RECORDING -> Unit
+        }
+    }
     MaterialTheme {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             when (ui.screen) {
-                WatchUiState.Screen.CONFIG -> ConfigScreen(viewModel, settings)
-                WatchUiState.Screen.READY -> ReadyScreen(viewModel, ui, hasPermission, onRequestPermission)
+                WatchUiState.Screen.CONFIG -> ConfigScreen(viewModel, settings, ui)
+                WatchUiState.Screen.READY -> ReadyScreen(viewModel, ui, discovery, canRecord, hasPermission, onRequestPermission)
                 WatchUiState.Screen.RECORDING -> RecordingActiveScreen(viewModel)
             }
         }
@@ -168,21 +205,35 @@ fun RecordingScreen(viewModel: RecordingViewModel, settings: SettingsStore, hasP
 }
 
 @Composable
-private fun ConfigScreen(viewModel: RecordingViewModel, settings: SettingsStore) {
+private fun ConfigScreen(viewModel: RecordingViewModel, settings: SettingsStore, ui: WatchUiState) {
     var ipText by remember { mutableStateOf(settings.receiverIp) }
     var portText by remember { mutableStateOf(settings.receiverPort) }
     var tokenText by remember { mutableStateOf(settings.devToken) }
     var tokenRevealed by remember { mutableStateOf(false) }
     var editingToken by remember { mutableStateOf(false) }
-    val canApply = DestinationValidator.validate(ipText, portText) is DestinationValidator.ValidationResult.Valid && DevTokenValidator.isValid(tokenText)
+    // Delivery 1C: only the token is mandatory. The manual address fields open
+    // when the user asks for them or when automatic discovery gave up.
+    val manualOpen = ui.manualOpen
+    val canApply = DevTokenValidator.isValid(tokenText) &&
+        (!manualOpen || ipText.isBlank() || DestinationValidator.validate(ipText, portText) is DestinationValidator.ValidationResult.Valid)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = WatchUiMetrics.ScreenSidePaddingDp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(stringResource(R.string.screen_config_title), fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(14.dp))
-        SettingsField(stringResource(R.string.config_pc_ip), ipText) { ipText = it }
-        Spacer(Modifier.height(8.dp))
-        SettingsField(stringResource(R.string.config_port), portText) { portText = it }
-        Spacer(Modifier.height(8.dp))
         FieldCard(stringResource(R.string.config_dev_token), if (tokenText.isEmpty()) stringResource(R.string.config_tap_to_edit) else if (tokenRevealed) tokenText else maskToken(tokenText), if (tokenRevealed) stringResource(R.string.config_hide_token) else stringResource(R.string.config_show_token), { editingToken = true }) { tokenRevealed = !tokenRevealed }
+        Spacer(Modifier.height(10.dp))
+        FieldCard(
+            stringResource(R.string.config_manual_settings),
+            if (manualOpen) stringResource(R.string.action_hide) else stringResource(R.string.action_show),
+            onClick = { viewModel.toggleManualSettings() },
+        )
+        if (manualOpen) {
+            Spacer(Modifier.height(8.dp))
+            SettingsField(stringResource(R.string.config_pc_ip), ipText) { ipText = it }
+            Spacer(Modifier.height(8.dp))
+            SettingsField(stringResource(R.string.config_port), portText) { portText = it }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(stringResource(R.string.config_manual_hint), fontSize = 9.sp, color = MutedText, textAlign = TextAlign.Center)
         Spacer(Modifier.height(14.dp))
         PillAction(stringResource(R.string.config_save_apply), { viewModel.applySettings(ipText, portText, tokenText) }, Modifier.fillMaxWidth(), enabled = canApply)
         if (!canApply) { Spacer(Modifier.height(8.dp)); Text(stringResource(R.string.config_validation_hint), fontSize = 10.sp, color = MutedText, textAlign = TextAlign.Center) }
@@ -191,23 +242,305 @@ private fun ConfigScreen(viewModel: RecordingViewModel, settings: SettingsStore)
 }
 
 @Composable
-private fun ReadyScreen(viewModel: RecordingViewModel, ui: WatchUiState, hasPermission: Boolean, onRequestPermission: () -> Unit) {
+private fun ReadyScreen(viewModel: RecordingViewModel, ui: WatchUiState, discovery: DiscoveryState, canRecord: Boolean, hasPermission: Boolean, onRequestPermission: () -> Unit) {
+    var settingsMenuOpen by remember { mutableStateOf(false) }
     WatchDial {
         if (!hasPermission) {
             PillAction(stringResource(R.string.ready_grant_mic), onRequestPermission, Modifier.fillMaxWidth().padding(horizontal = 40.dp))
         } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                // Title: small, gray, slightly higher.
-                Text(stringResource(R.string.dial_title_ready), fontSize = 9.sp, color = DialMuted, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp, modifier = Modifier.align(Alignment.Center).offset(y = -56.dp))
-                // Line microphone: largest element, dead center.
-                Box(Modifier.size(84.dp).align(Alignment.Center).clickable { viewModel.recordButtonPressed() }, contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(72.dp)) { drawIcon(IconType.MICROPHONE, DialIcon) }
+            // Match the frozen dev.3 dial: title above a centered microphone, with
+            // transport status and the low-key Settings entry below it. A centered
+            // column moved both title and microphone noticeably upward on the Watch.
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                Text(
+                    stringResource(R.string.dial_title_ready),
+                    fontSize = 9.sp,
+                    color = DialMuted,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.5.sp,
+                    modifier = Modifier.align(Alignment.TopCenter).offset(y = maxHeight * 0.23f),
+                )
+                // Line microphone: largest element, dead center. Repair 1 必修 2:
+                // disabled (dimmed, non-clickable) until an endpoint authenticated.
+                Box(
+                    Modifier.align(Alignment.Center).size(96.dp)
+                        .clickable(enabled = canRecord) { viewModel.recordButtonPressed() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(Modifier.size(72.dp)) {
+                        drawIcon(IconType.MICROPHONE, if (canRecord) DialIcon else DialMuted)
+                    }
                 }
-                // Dim, low-key settings entry (needed for first-time config).
-                Text(stringResource(R.string.ready_open_config), fontSize = 8.sp, color = DialMuted, modifier = Modifier.align(Alignment.Center).offset(y = 66.dp).clickable { viewModel.openConfig() })
+                // Transport-only discovery status; a saved-address re-probe is never
+                // worded as a new automatic discovery (R5 必修 3).
+                val statusLabelRes = readyStatusTextRes(discovery, ui.transportAvailable == true)
+                Text(
+                    stringResource(statusLabelRes),
+                    fontSize = 8.sp,
+                    color = if (discovery is DiscoveryState.ManualFallback) WarningRed else DialMuted,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                        .offset(
+                            x = if (statusLabelRes == R.string.discovery_saved_neutral) (-2).dp else 0.dp,
+                            y = maxHeight * 0.68f,
+                        )
+                        .padding(horizontal = 30.dp),
+                )
+                // One low-key entry on the dial. Opening this menu does not call
+                // openConfig(), which would invalidate the verified current PC.
+                Box(
+                    Modifier.align(Alignment.BottomCenter).offset(y = (-22).dp)
+                        .width(96.dp).heightIn(min = WatchUiMetrics.RowMinHeightDp)
+                        .clickable(enabled = !ui.isUploading) { settingsMenuOpen = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(stringResource(R.string.ready_open_config), fontSize = 9.sp, color = DialMuted)
+                }
             }
         }
+        if (settingsMenuOpen) {
+            ReadySettingsMenu(
+                ui = ui,
+                onDismiss = { settingsMenuOpen = false },
+                onSwitch = {
+                    settingsMenuOpen = false
+                    viewModel.requestSwitch()
+                },
+                onConnectionSettings = {
+                    settingsMenuOpen = false
+                    viewModel.openConfig()
+                },
+            )
+        }
+        if (ui.switchOpen) {
+            ComputerSwitchDialog(viewModel, ui)
+        }
     }
+}
+
+@Composable
+private fun ReadySettingsMenu(
+    ui: WatchUiState,
+    onDismiss: () -> Unit,
+    onSwitch: () -> Unit,
+    onConnectionSettings: () -> Unit,
+) {
+    val face = Color(0xFF151A22)
+    val card = Color(0xFF262D38)
+    val quiet = Color(0xFFA4ADBA)
+    val accent = Color(0xFF3488F5)
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(face)) {
+            Text(
+                stringResource(R.string.ready_open_config),
+                fontSize = 14.sp,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.TopCenter).offset(y = maxHeight * .10f),
+            )
+            Text(
+                stringResource(R.string.settings_section_title),
+                fontSize = 8.sp,
+                color = quiet,
+                modifier = Modifier.align(Alignment.TopCenter).offset(y = maxHeight * .19f),
+            )
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(end = maxWidth * .11f, top = maxHeight * .06f)
+                    .size(48.dp).clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Canvas(Modifier.size(20.dp)) { drawIcon(IconType.CLOSE, quiet) }
+            }
+            SettingsMenuAction(
+                title = stringResource(switchEntryLabelRes(ui.switchSearching, ui.targets.isNotEmpty())),
+                detail = stringResource(R.string.settings_switch_hint),
+                icon = IconType.SWITCH,
+                iconColor = accent,
+                cardColor = card,
+                detailColor = quiet,
+                onClick = onSwitch,
+                enabled = !ui.switchSearching && !ui.isUploading,
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .offset(y = maxHeight * .296f).fillMaxWidth(.68f),
+            )
+            SettingsMenuAction(
+                title = stringResource(R.string.screen_config_title),
+                detail = stringResource(R.string.settings_connection_hint),
+                icon = IconType.SLIDERS,
+                iconColor = quiet,
+                cardColor = card,
+                detailColor = quiet,
+                onClick = onConnectionSettings,
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .offset(y = maxHeight * .55f).fillMaxWidth(.68f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsMenuAction(
+    title: String,
+    detail: String,
+    icon: IconType,
+    iconColor: Color,
+    cardColor: Color,
+    detailColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier.height(52.dp).background(cardColor, RoundedCornerShape(13.dp))
+            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(24.dp).background(if (icon == IconType.SWITCH) Color(0xFF1B2B43) else Color(0xFF313946), CircleShape), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.size(15.dp)) { drawIcon(icon, iconColor) }
+        }
+        Spacer(Modifier.width(6.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 11.sp, color = if (enabled) Color.White else detailColor, maxLines = 1)
+            Spacer(Modifier.height(2.dp))
+            Text(detail, fontSize = 7.sp, color = detailColor, maxLines = 1)
+        }
+        Canvas(Modifier.size(10.dp)) {
+            drawLine(detailColor, Offset(size.width * .2f, size.height * .1f), Offset(size.width * .75f, size.height * .5f), 2.dp.toPx(), StrokeCap.Round)
+            drawLine(detailColor, Offset(size.width * .75f, size.height * .5f), Offset(size.width * .2f, size.height * .9f), 2.dp.toPx(), StrokeCap.Round)
+        }
+    }
+}
+
+/**
+ * 1C-D-04@R5 / 1C-PM-UI-01@R1 — is search/switch reachable from Ready?
+ *
+ * A pure decision so the invariant is JVM-testable without Compose rendering: the
+ * The Settings menu entry must exist for **every** Ready state, including the normal
+ * "one saved computer is online" case. R4 gated it on `targets.size > 1`.
+ */
+internal fun searchEntryAvailable(ui: WatchUiState): Boolean = ui.screen == WatchUiState.Screen.READY
+
+/** 1C-D-04@R5: the entry's label resource for the current state. */
+internal fun switchEntryLabelRes(searching: Boolean, hasKnownTargets: Boolean): Int = when {
+    searching -> R.string.ready_entry_searching
+    hasKnownTargets -> R.string.ready_switch_computer
+    else -> R.string.ready_search_computer
+}
+
+/**
+ * 1C-D-04@R5/R6 必修 3 — the Ready status wording.
+ *
+ * R5 mapped `Discovered` to "已自动发现电脑". The real-device run proved that is a
+ * false statement on the user's screen: a cold start whose log contains only
+ * `saved-probe:accepted` / `verdict:one` (no `browse:*`) still reaches the UI as
+ * `Discovered`, because `ResolverBridge.routeAutomatic()` normalises every verified
+ * run to `Discovered` and `RecordingViewModel.applyResolverVerdict()` publishes
+ * `Discovered` for the saved-address verdict as well. The UI therefore cannot tell a
+ * fresh browse from a saved-address re-probe.
+ *
+ * R6 fix (UI-only, no protocol change): an authenticated, usable target is ALWAYS
+ * described neutrally as "已连接电脑". Only non-ready states keep their specific
+ * wording, and none of them may claim a discovery. This is deliberately fail-safe: if
+ * the internal source tracking is ever fixed, this mapping does not have to change
+ * before the wording becomes truthful again.
+ */
+internal fun readyStatusTextRes(state: DiscoveryState, hasVerifiedTarget: Boolean): Int = when (state) {
+    is DiscoveryState.Searching -> R.string.discovery_searching
+    // Neutral for BOTH branches: while the UI cannot distinguish a fresh browse from a
+    // saved-address re-probe, it must not claim one. `discovery_found` is intentionally
+    // NOT reachable from here.
+    is DiscoveryState.Discovered ->
+        if (hasVerifiedTarget) R.string.discovery_saved_neutral else R.string.discovery_awaiting
+    is DiscoveryState.ExistingAddress ->
+        if (hasVerifiedTarget) R.string.discovery_saved_neutral else R.string.discovery_awaiting
+    is DiscoveryState.ManualFallback -> R.string.discovery_manual
+    is DiscoveryState.Idle ->
+        if (hasVerifiedTarget) R.string.discovery_saved_neutral else R.string.discovery_none_yet
+}
+
+/**
+ * 1C-D-04@R2 — the explicit "switch computer" picker.
+ *
+ * Shows the 局域网 address of each computer purely so the user can tell two PCs
+ * apart; the address is never logged, never broadcast and never sent anywhere.
+ * Only endpoints that passed the authenticated Bearer probe can appear here, and a
+ * manual address field is deliberately absent: switching must not require typing an
+ * address.
+ */
+@Composable
+private fun ComputerSwitchDialog(viewModel: RecordingViewModel, ui: WatchUiState) {
+    Dialog(onDismissRequest = { viewModel.dismissSwitchPicker() }) {
+        Column(
+            Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .background(PanelSurface, RoundedCornerShape(18.dp))
+                .padding(horizontal = 12.dp, vertical = 14.dp)
+                .selectableGroup(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(stringResource(R.string.switch_dialog_title), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.switch_dialog_hint),
+                fontSize = 9.sp,
+                color = MutedText,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(10.dp))
+            ui.targets.forEach { target ->
+                val isCurrent = target == ui.currentTarget
+                Column(
+                    Modifier.fillMaxWidth()
+                        .selectable(selected = isCurrent, onClick = { viewModel.onTargetPicked(target) })
+                        .background(if (isCurrent) SayItBlue else FieldSurface, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        stringResource(
+                            if (isCurrent) R.string.switch_current_computer else R.string.switch_other_computer,
+                        ),
+                        fontSize = 9.sp,
+                        color = if (isCurrent) Color.White else MutedText,
+                    )
+                    Text("${target.ip}:${target.port}", fontSize = 13.sp, color = Color.White, maxLines = 1)
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            Spacer(Modifier.height(4.dp))
+            if (ui.switchSearching) {
+                Text(
+                    stringResource(R.string.switch_searching),
+                    fontSize = 9.sp,
+                    color = SayItBlue,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(6.dp))
+            }
+            PillAction(stringResource(R.string.switch_search_again), {
+                viewModel.requestSwitch()
+            }, Modifier.fillMaxWidth(), background = SayItBlue, enabled = !ui.switchSearching)
+            Spacer(Modifier.height(8.dp))
+            PillAction(stringResource(R.string.action_cancel), { viewModel.dismissSwitchPicker() }, Modifier.fillMaxWidth(), background = FieldSurface)
+        }
+    }
+}
+
+/**
+ * Transport-only discovery wording; never claims Provider/ASR readiness.
+ *
+ * 1C-D-04@R5 必修 3: `ExistingAddress` is the SAVED address answering the probe
+ * again — it must not be worded as a new automatic discovery, and nothing here may
+ * claim mDNS succeeded. [hasVerifiedTarget] still distinguishes "no address yet"
+ * from "an address was verified in this session".
+ */
+internal fun discoveryLabel(state: DiscoveryState, hasVerifiedTarget: Boolean): String = when (state) {
+    is DiscoveryState.Searching -> "正在搜索电脑…"
+    is DiscoveryState.Discovered -> if (hasVerifiedTarget) "已自动发现电脑" else "等待认证结果…"
+    is DiscoveryState.ExistingAddress -> if (hasVerifiedTarget) "已连接电脑" else "等待认证结果…"
+    is DiscoveryState.ManualFallback -> "未找到电脑，点此搜索或手动设置地址"
+    is DiscoveryState.Idle -> if (hasVerifiedTarget) "已连接电脑" else "尚未找到电脑"
 }
 
 @Composable

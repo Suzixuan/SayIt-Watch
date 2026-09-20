@@ -1,0 +1,7 @@
+# Watch Ready alignment — 0.3.0-dev.1-candidate.2
+
+- Status: `candidate`, frozen after R1 real-device visual review. Parent iteration: `0.3.0-dev.1-candidate.1`; original approved dial reference: `0.2.0-dev.3-final/ready.png` (copied as `parent-ready.png`).
+- R1 was installed with app data preserved. `runtime-R1-ready.png` proves the switch button was removed but shows MIC READY and the microphone shifted too high compared with the original approved dial. `02-settings-menu-R1-runtime.png` proves the settings menu is visible and its two actions fit the round screen; that menu is locked for this iteration.
+- `01-ready.png` places the original title and microphone exactly as in the approved parent, adding only a neutral connection line above the low-key Settings entry. `render.py` reproduces this 480×480 placement study from the parent screenshot; run it only in staging, not in this frozen directory.
+- `RecordingScreen.R1.kt` and `strings.R1.xml` are complete pre-replacement snapshots. R2 only repositions Ready content and corrects no-target wording where the moved action makes "tap here" inaccurate. It must not change the Settings menu, switch picker, authentication, current-target retention, recording, or upload.
+- A preview is not Compose evidence. PM must install the R2 Debug APK without clearing data, inspect Ready and Settings at 480×480, and rerun the one-target switch/old-target-retention path. No-target and two-PC cases remain separately gated by device availability.

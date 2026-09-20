@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SayIt</string>
+
+    <!-- Screens -->
+    <string name="screen_config_title">连接设置</string>
+    <string name="screen_ready_title">SayIt</string>
+    <string name="recording_title">录音中</string>
+
+    <!-- Watch dial (card) presentation -->
+    <string name="dial_title_ready">MIC READY</string>
+    <string name="dial_title_recording">RECORDING</string>
+
+    <!-- Developer configuration -->
+    <string name="config_pc_ip">电脑地址</string>
+    <string name="config_port">Port</string>
+    <string name="config_dev_token">访问令牌（64 位）</string>
+    <string name="config_tap_to_edit">点击输入</string>
+    <string name="config_show_token">显示</string>
+    <string name="config_hide_token">隐藏</string>
+    <string name="config_save_apply">Save &amp; Apply</string>
+    <string name="config_validation_hint">请输入 64 位十六进制令牌。</string>
+    <string name="config_manual_settings">手动设置地址（可选）</string>
+    <string name="config_manual_hint">通常不必填写：手表会自动发现同一 Wi-Fi 的电脑。发现不到时才在这里输入。</string>
+
+    <!-- Delivery 1C automatic discovery status -->
+    <string name="discovery_searching">正在搜索电脑…</string>
+    <string name="discovery_found">已自动发现电脑</string>
+    <string name="discovery_saved_neutral">已连接电脑</string>
+    <string name="discovery_awaiting">等待认证结果…</string>
+    <string name="discovery_none_yet">尚未找到电脑</string>
+    <string name="discovery_manual">未找到电脑，点此搜索或手动设置地址</string>
+
+    <!-- Ready / health -->
+    <string name="health_unchecked">传输状态：未检查</string>
+    <string name="health_available">传输状态：可用</string>
+    <string name="health_unavailable">传输状态：不可用</string>
+    <string name="health_check_action">刷新</string>
+    <string name="ready_grant_mic">允许麦克风</string>
+    <string name="ready_record">点击开始录音</string>
+    <string name="ready_open_config">设置 / 手动地址</string>
+    <string name="ready_discovery_failed">未发现电脑，点此填写地址</string>
+
+    <!-- 1C-D-04@R2/R5 explicit computer search & switch -->
+    <string name="ready_switch_computer">切换电脑</string>
+    <string name="ready_search_computer">搜索电脑</string>
+    <string name="ready_entry_searching">正在搜索电脑…</string>
+    <string name="ready_search_hint">未找到电脑：点上方按钮重新搜索，或进入「设置 / 手动地址」。</string>
+    <string name="switch_dialog_title">选择电脑</string>
+    <string name="switch_dialog_hint">以下电脑都已验证通过。点选要使用的那一台；不需要手动输入地址。</string>
+    <string name="switch_current_computer">当前使用</string>
+    <string name="switch_other_computer">已认证电脑</string>
+    <string name="switch_search_again">搜索其他电脑</string>
+    <string name="switch_searching">正在搜索其他电脑…</string>
+
+    <!-- Recording -->
+    <string name="recording_stop">结束录音</string>
+    <string name="recording_cancel_hint">取消</string>
+
+    <!-- Actions / status -->
+    <string name="action_ok">确定</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_show">展开</string>
+    <string name="action_hide">收起</string>
+</resources>

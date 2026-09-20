@@ -30,6 +30,18 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 pub const MAX_BODY_BYTES: usize = 10 * 1024 * 1024; // 10 MiB cap before allocation
 
+/// Delivery 1C: frozen service identifier echoed by the authenticated discovery
+/// probe. Fixed, non-sensitive, and identical to the Watch's expected value.
+pub const DISCOVERY_SERVICE_ID: &str = "sayit-watch-debug-receiver";
+
+/// Delivery 1C: frozen discovery protocol version.
+pub const DISCOVERY_PROTOCOL_VERSION: u32 = 1;
+
+/// Delivery 1C: the authenticated probe path itself. It is the mDNS TXT value
+/// (`path=/api/watch/discovery`) and the route served here; Repair 1 必修 4
+/// removed it from the success body, not from the advertisement.
+pub const DISCOVERY_ENDPOINT_PATH: &str = "/api/watch/discovery";
+
 /// Debug-only event sink into the WebView (Tauri `emit` in production, set from
 /// `main.rs` setup; a recording closure in tests). The payload MUST be a
 /// `serde_json::Value` object — Tauri serializes whatever it is given, so a
@@ -142,6 +154,10 @@ impl ReceiverServer {
 
         match (method, url.as_str()) {
             (Method::Get, "/api/health") => self.handle_health(request),
+            // Delivery 1C: authenticated discovery probe. The Watch only saves a
+            // discovered RFC1918 address after this endpoint answers 200 with the
+            // frozen service id + protocol version under its own Bearer token.
+            (Method::Get, "/api/watch/discovery") => self.handle_discovery(request),
             (Method::Post, "/api/watch/audio") => self.handle_audio(request),
             (Method::Get | Method::Post, _) => {
                 json_response(request, StatusCode(404), "not found")
@@ -155,6 +171,29 @@ impl ReceiverServer {
             request,
             StatusCode(200),
             r#"{"service":"sayit-watch-debug-receiver","status":"ok","asrReady":false}"#,
+        )
+    }
+
+    /// `GET /api/watch/discovery` (Delivery 1C).
+    ///
+    /// Constant-time Bearer check with the existing dev token, then a fixed
+    /// non-sensitive body carrying exactly the frozen `service` and `protocol`
+    /// (Repair 1 必修 4 removed the extra `path` field; the TXT record still
+    /// advertises `path=/api/watch/discovery`). The response never echoes or logs
+    /// the token or the Authorization header, and a failed check answers a bare
+    /// 401 so the endpoint cannot be used as an unauthenticated address oracle.
+    fn handle_discovery(&self, request: Request) -> Result<(), std::io::Error> {
+        if !self.authorized(&request) {
+            log::warn!("watch discovery: unauthorized probe rejected");
+            return json_response(request, StatusCode(401), r#"{"error":"unauthorized"}"#);
+        }
+        json_response(
+            request,
+            StatusCode(200),
+            &format!(
+                r#"{{"service":"{}","protocol":{}}}"#,
+                DISCOVERY_SERVICE_ID, DISCOVERY_PROTOCOL_VERSION,
+            ),
         )
     }
 
@@ -610,6 +649,116 @@ mod tests {
         assert_eq!(status, 200);
         assert!(resp.contains("sayit-watch-debug-receiver"));
         assert!(resp.contains("asrReady"));
+    }
+
+    #[test]
+    fn discovery_probe_requires_the_exact_token() {
+        isolate_dir();
+        let addr = start_test_server();
+        let path = "/api/watch/discovery";
+
+        // Missing Authorization -> 401, and the body is a bare status.
+        let resp = raw_request(&addr, "GET", path, &[], b"");
+        assert_eq!(status_of(&resp), 401);
+        // A token of the right shape but the wrong value -> 401.
+        let resp = raw_request(
+            &addr,
+            "GET",
+            path,
+            &[("Authorization", &"b".repeat(64))],
+            b"",
+        );
+        assert_eq!(status_of(&resp), 401);
+        // A token of the wrong shape (the constant-time compare must not panic
+        // on a length mismatch) -> 401.
+        let resp = raw_request(&addr, "GET", path, &[("Authorization", "Bearer short")], b"");
+        assert_eq!(status_of(&resp), 401);
+        // Wrong scheme -> 401.
+        let resp = raw_request(&addr, "GET", path, &[("Authorization", "Token abc")], b"");
+        assert_eq!(status_of(&resp), 401);
+        // A wrong token must not receive the service identity: no oracle.
+        assert!(!resp.contains(DISCOVERY_SERVICE_ID));
+        assert!(!resp.contains("protocol"));
+    }
+
+    #[test]
+    fn discovery_probe_returns_only_the_frozen_identity() {
+        isolate_dir();
+        let addr = start_test_server();
+        let resp = raw_request(
+            &addr,
+            "GET",
+            "/api/watch/discovery",
+            &[("Authorization", TEST_BEARER)],
+            b"",
+        );
+        assert_eq!(status_of(&resp), 200);
+        assert!(resp.contains(&format!(r#""service":"{DISCOVERY_SERVICE_ID}""#)));
+        assert!(resp.contains(&format!(r#""protocol":{DISCOVERY_PROTOCOL_VERSION}"#)));
+        // Fixed body: already public metadata only — never the token, and no
+        // audio/transcript/host details.
+        let body = resp.split("\r\n\r\n").nth(1).unwrap_or("");
+        assert!(!body.contains("token"));
+        assert!(!body.to_lowercase().contains("bearer"));
+        // Repair 1 必修 4: the success body carries EXACTLY `service` and
+        // `protocol`. The probe path is advertised through TXT only.
+        assert_eq!(
+            body,
+            format!(
+                r#"{{"service":"{}","protocol":{}}}"#,
+                DISCOVERY_SERVICE_ID, DISCOVERY_PROTOCOL_VERSION
+            )
+        );
+        assert!(
+            !body.contains("path"),
+            "the discovery success body must not carry a path field: {body}"
+        );
+    }
+
+    #[test]
+    fn discovery_probe_never_leaks_the_token_into_the_success_log_path() {
+        // Source-level guard: the discovery handler must log only a fixed
+        // rejection line and must never format the Authorization header.
+        let source = std::fs::read_to_string("src/watch_receiver/server.rs")
+            .expect("server.rs must exist");
+        let handler_start = source.find("fn handle_discovery").expect("handler exists");
+        let body = function_body(&source, handler_start);
+        assert!(body.contains("self.authorized(&request)"));
+        assert!(body.contains("StatusCode(401)"));
+        assert!(
+            !body.contains("Authorization") && !body.contains("dev_token"),
+            "the discovery handler must not touch the Authorization header or the token"
+        );
+    }
+
+    #[test]
+    fn discovery_path_constant_matches_the_advertised_txt_value() {
+        // The TXT `path` advertised in mDNS and the route served here are the
+        // same string; a drift would make discovery unusable.
+        assert_eq!(DISCOVERY_ENDPOINT_PATH, crate::watch_receiver::mdns::DISCOVERY_PATH);
+        assert_eq!(crate::watch_receiver::mdns::SERVICE_TYPE, "_sayit-watch._tcp.local.");
+    }
+
+    /// Extracts the brace-balanced body of the function starting at `start`.
+    fn function_body(source: &str, start: usize) -> &str {
+        let open = source[start..]
+            .find('{')
+            .map(|i| start + i)
+            .expect("function must have a body");
+        let mut depth = 0usize;
+        for (offset, byte) in source.as_bytes()[open..].iter().enumerate() {
+            match byte {
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return &source[open..open + offset + 1];
+                    }
+                }
+                _ => {}
+            }
+        }
+        panic!("unbalanced braces in function body");
     }
 
     #[test]

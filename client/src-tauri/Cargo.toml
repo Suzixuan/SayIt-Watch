@@ -87,6 +87,13 @@ webview2-com = "0.38"
 # 也没有任何接收端启动路径（含 release-guard 测试）。
 tiny_http = "0.12"
 
+# ── Delivery 1C watch auto-discovery (debug-only) ──
+# 标准 DNS-SD/mDNS 广播（RFC 6762/6763），不自定义 UDP 广播协议。只在 debug
+# receiver 成功绑定端口之后注册 _sayit-watch._tcp；release 构建既不编译
+# watch_receiver::mdns，也没有任何注册入口（含 release-guard 测试）。
+# 依赖本身常驻 Cargo 图内，与 tiny_http 同样的处理方式。
+mdns-sd = "0.21"
+
 # Release 体积/性能优化。panic 保持 unwind：Tauri 与 catch_unwind 依赖它，
 # 换成 abort 会让引擎 panic 直接杀进程。
 [profile.release]

@@ -22,7 +22,7 @@
 # 依赖在 requirements.txt
 pip install -r requirements.txt
 # 注入环境变量后启动（entrypoint.sh 已配置启动方式）
-export OPENAI_API_KEY="..."   # 示例：从安全来源获取，勿硬编码
+export OPENAI_API_KEY=<your-api-key>   # 示例：从安全来源获取，勿硬编码
 ./entrypoint.sh
 ```
 

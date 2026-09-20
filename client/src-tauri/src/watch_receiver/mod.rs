@@ -10,6 +10,11 @@
 //!   `%LOCALAPPDATA%\com.sayit.app\watch-receiver\received_watch.wav`.
 
 pub mod config;
+// Delivery 1C: standard DNS-SD/mDNS advertisement. Debug-only for the same
+// reason as the whole receiver — release builds contain no advertisement entry
+// point (see `mdns.rs` and the release-guard tests in this module).
+#[cfg(debug_assertions)]
+pub mod mdns;
 pub mod server;
 pub mod wav;
 
@@ -38,6 +43,10 @@ pub fn start() -> Result<(), Box<dyn std::error::Error>> {
                 server.bind_port(),
                 cfg.has_dev_token(),
             );
+            // Delivery 1C: advertise only AFTER the port was bound successfully,
+            // so the Watch can never discover an address that is not listening.
+            #[cfg(debug_assertions)]
+            mdns::spawn_registration(&cfg);
             server.run();
         })?;
     Ok(())
@@ -113,6 +122,48 @@ mod tests {
         assert!(
             sink_pos < start_pos,
             "set_event_sink must be registered BEFORE watch_receiver::start (otherwise the receiver snaps the no-op sink -> every admission event is dropped -> 409 bridge_timeout)"
+        );
+    }
+
+    #[test]
+    fn discovery_module_gate_is_debug_assertions() {
+        // Delivery 1C: the mDNS advertisement module must be declared inside the
+        // same debug-only receiver module, so release builds contain no
+        // advertisement code path at all.
+        let mod_src = fs::read_to_string("src/watch_receiver/mod.rs")
+            .expect("watch_receiver/mod.rs must exist");
+        let idx = mod_src
+            .find("pub mod mdns;")
+            .expect("mod.rs must declare the mdns module");
+        let window = &mod_src[idx.saturating_sub(400)..idx];
+        assert!(
+            window.contains("#[cfg(debug_assertions)]"),
+            "pub mod mdns must be guarded by #[cfg(debug_assertions)]"
+        );
+    }
+
+    #[test]
+    fn discovery_registration_requires_a_bound_receiver() {
+        // The advertisement must be issued only after the receiver's own bind
+        // succeeded, and only under the debug gate: a registration that ran
+        // before the bind (or without the gate) could advertise a port that is
+        // not actually listening, or ship an advertisement path in release.
+        let mod_src = fs::read_to_string("src/watch_receiver/mod.rs")
+            .expect("watch_receiver/mod.rs must exist");
+        let bind_pos = mod_src
+            .find("let server = match server::ReceiverServer::start(thread_cfg)")
+            .expect("the receiver must bind through ReceiverServer::start");
+        let register_pos = mod_src
+            .find("mdns::spawn_registration(&cfg)")
+            .expect("the receiver must register the mDNS service");
+        assert!(
+            bind_pos < register_pos,
+            "mDNS registration must happen AFTER a successful receiver bind"
+        );
+        let window = &mod_src[bind_pos..register_pos];
+        assert!(
+            window.contains("#[cfg(debug_assertions)]"),
+            "the mDNS registration call must be guarded by #[cfg(debug_assertions)]"
         );
     }
 }
