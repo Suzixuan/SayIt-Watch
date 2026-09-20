@@ -1,5 +1,11 @@
 # SayIt Watch Transport handoff
 
+## 当前有效返修：1C-D-04@R7（2026-09-20，待发送）
+
+- 用户批准统一便携包与连接全流程返修。唯一任务包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R7.md`；上一 D 版本 R6，继承 PM UI R4。产品基线 main `17e59afde86ccf971b3d6ef1e777f841dece7224`，开发分支 `codex/watch-connection-r7`，工作树 `C:/Users/suzix/Documents/ChatGPT/SayIt-Watch-sync`；旧 `../Saylt` 不再写产品源码。
+- 本轮范围：前台晚启动/重试/失效恢复，搜索单任务与显式点选，当前 IP 和简洁设置显示，同一份自包含 Windows Debug 测试便携包。任务包明确范围、A–H 场景、证据和回滚；D 开发，PM 独立装机/双电脑验收。
+- 当前仅 PM 文档与分支准备，尚未发送；没有产品改动、构建、部署或新的验收通过。阶段 12 与统一包均未完成；既有 UI R4 局部证据保留，不能代表连接通过。
+
 ## 原仓库 main 已同步（2026-09-20）
 
 - 用户确认同步到原有公开仓库 `Suzixuan/SayIt-Watch`（原名 `SayIt-watch-local`）。分支 `codex/watch-sync-20260920` 从原 `main` 的 `4b5bf7e1be7b75c7074ba105ae12099de8ece813` 建立，按文件导入已审核的 Delivery 1C、R4 UI、README 与证据；保留原历史和原仓库已有文件。此前误建的私有仓库不再作为同步目标。
