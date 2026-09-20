@@ -33,7 +33,9 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: RecordingViewModel by viewModels {
         val store = SettingsStore(applicationContext)
-        RecordingViewModel.Factory(store)
+        // Delivery 1C: the application context lets the ViewModel build the
+        // platform NSD browser (debug builds only).
+        RecordingViewModel.Factory(store, applicationContext)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -82,3 +82,15 @@ client/src-tauri/sayit-settings-*.json
 *.log
 runtime/
 watch/.kotlin/
+
+# Local visual experiments and pre-rewrite README backups
+design/**/.staging-*/
+docs/.staging-*/
+docs/archive/
+
+# Inherited documentation screenshots outside the Watch set can show account
+# identifiers or partially masked API credentials; keep them only locally.
+docs/images/*
+!docs/images/readme/
+docs/images/readme/*
+!docs/images/readme/watch/
