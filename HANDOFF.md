@@ -1,21 +1,21 @@
 # SayIt Watch Transport handoff
 
-## 原仓库同步（2026-09-20）
+## 原仓库 main 已同步（2026-09-20）
 
 - 用户确认同步到原有公开仓库 `Suzixuan/SayIt-Watch`（原名 `SayIt-watch-local`）。分支 `codex/watch-sync-20260920` 从原 `main` 的 `4b5bf7e1be7b75c7074ba105ae12099de8ece813` 建立，按文件导入已审核的 Delivery 1C、R4 UI、README 与证据；保留原历史和原仓库已有文件。此前误建的私有仓库不再作为同步目标。
-- 本次同步不改变产品源码内容，复用下文 R4 的 198 项测试、lint/build 和真机截图证据。两电脑同时在线的发现、选择、换机后录音仍未完成端到端验收。同步以 PR 交付；合并前，新 README 与代码只在该分支，远端默认首页仍是原 `main`。
-- 其他电脑在 PR 合并前可使用 `git clone --branch codex/watch-sync-20260920 https://github.com/Suzixuan/SayIt-Watch.git` 接手。历史记录中旧仓库名称、私有可见性和空 Git 基线均为当时状态，以本节为准。
+- PR [#4](https://github.com/Suzixuan/SayIt-Watch/pull/4) 已合入 `main`，合并提交 `b561dc6d64f28199e1ba2105a2b407ac0ccc57cb`。远端默认分支与 README、手表 Logo、Ready 截图均已读回确认。其他电脑直接克隆 `https://github.com/Suzixuan/SayIt-Watch.git` 即可取得新版代码与文档。
+- 本次同步不改变产品源码内容，复用下文 R4 的 198 项测试、lint/build 和真机截图证据。两电脑同时在线的发现、选择、换机后录音仍未完成端到端验收，也未发布对应的新安装包。历史记录中旧仓库名称、私有可见性和空 Git 基线均为当时状态，以本节为准。
 
 ## Ready 状态居中与 GitHub 交接：1C-PM-UI-01@R4（2026-09-20）
 
 - 用户要求「已连接电脑」更居中、README 以手表功能为主并上传 GitHub。PM 冻结 `design/watch-ui/0.3.0-dev.1-candidate.4/`（父版 candidate.3 的 R3 真机 Ready，含预览、完整前态源码/测试与 SHA-256），只对已连接文案应用 -2dp 水平光学偏移；其他状态、麦克风、设置菜单、连接与录音逻辑不变。变更与回退说明见 `docs/DELIVERY-1C-PM-UI-SETTINGS-R4.md`。
 - Watch 21 suites / 198 tests / 0 failures，lint 0 error / 36 warnings，Debug build 退出码 0；APK SHA-256 `180c4812fcf58edad0a5af9eaa4b714434e4f36f9a0682e472b33bde0311edc0`。保留数据 `adb install -r` 成功，真机 R4 截图相对 R3 只有状态行 925 像素改变、其余 0；文字像素重心 x≈244→240，与候选预览逐像素一致。证据 `docs/evidence/1C-PM-UI-01-R4/`。**R4 视觉局部验收通过；两电脑切换仍未验，阶段 12 未关闭。**
-- 根 README 已改为手表为主，复用手表 Logo 和真实 Ready/Recording/Settings 截图；旧 README/中文 README 完整前态仅留本机 `docs/archive/` 作为回退，不进入 GitHub。`.gitignore` 排除了本地配置、构建产物、视觉 staging，以及可见账户标识/部分 API Key 的旧上游说明截图。PM 漏查既有仓库，误将初始提交 `69a194da35e15c10a42e1eab8dcc88575aebdd31` 推到新建的 **私有** [Suzixuan/Saylt](https://github.com/Suzixuan/Saylt)；该仓库暂留作备份，不再视为目标。用户指出原有 [Suzixuan/SayIt-Watch](https://github.com/Suzixuan/SayIt-Watch)，PM 已按用户要求将其从 `SayIt-watch-local` 更名，读回为 **PUBLIC**、`main` 仍是 `4b5bf7e1be7b75c7074ba105ae12099de8ece813`。两边 Git 历史没有共同祖先；新版 README/源码**尚未同步到原有公开仓库**，不得强推覆盖。未创建 Release，未推送 `crosswk/SayIt`。
+- 根 README 已改为手表为主，复用手表 Logo 和真实 Ready/Recording/Settings 截图；旧 README/中文 README 完整前态仅留本机 `docs/archive/` 作为回退，不进入 GitHub。`.gitignore` 排除了本地配置、构建产物、视觉 staging，以及可见账户标识/部分 API Key 的旧上游说明截图。PM 曾误将初始提交 `69a194da35e15c10a42e1eab8dcc88575aebdd31` 推到新建的 **私有** [Suzixuan/Saylt](https://github.com/Suzixuan/Saylt)；该仓库暂留作备份，不作为目标。原有公开仓库已更名为 [Suzixuan/SayIt-Watch](https://github.com/Suzixuan/SayIt-Watch)，后续同步和合并结果见本文件顶部。未创建 Release，未推送 `crosswk/SayIt`。
 
 ## Ready 状态文案视觉候选：1C-PM-UI-01@R4（2026-09-20，实施前）
 
 - 用户要求把「已连接电脑」水平居中，并在完成后将项目上传 GitHub、将 README 改为手表主角。PM 冻结 `design/watch-ui/0.3.0-dev.1-candidate.4/`，父版为 R3 真机 Ready；仅将状态文案光学左移约 2dp 的预览、完整前态源码/测试、已锁定的设置菜单和哈希保存在候选目录。此处为冻结时历史状态；后续实施与真机证据见本文件顶部。
-- 旧 Delivery 1C 切片禁止 push 是针对当时的开发验收。用户本轮明确要求上传，PM 将只在安全审查后创建独立私有仓库，不推送 `crosswk/SayIt`。双电脑真机验收仍独立未完成。
+- 旧 Delivery 1C 切片禁止 push 是针对当时的开发验收。用户本轮明确要求上传；最终目标改为原有 `Suzixuan/SayIt-Watch`，结果见本文件顶部。双电脑真机验收仍独立未完成。
 
 ## 设置菜单实施与真机验收：1C-PM-UI-01@R3（2026-09-20）
 
