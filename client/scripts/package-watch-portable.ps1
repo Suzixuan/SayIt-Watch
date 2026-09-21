@@ -24,7 +24,10 @@ param(
     # Reuse the already-built debug EXE instead of running cargo again.
     [switch]$SkipBuild,
     # Output directory for the ZIP (gitignored). Defaults to <repo>/dist-portable.
-    [string]$OutputDir
+    [string]$OutputDir,
+    # Explicit product commit to record in BUILD-INFO. Defaults to the current HEAD, which is
+    # the product commit when the worktree is clean (the normal case).
+    [string]$ProductCommit
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,15 +45,42 @@ $stagingDir = Join-Path $OutputDir $packageBase
 function Write-Step([string]$text) { Write-Host "==> $text" -ForegroundColor Cyan }
 function Fail([string]$text) { Write-Host "ERROR: $text" -ForegroundColor Red; exit 1 }
 
-# ── 0. Sanity: this must run from the R7 worktree ───────────────────────────────
+# ── 0. Sanity: this must run from the R7/R8 worktree ───────────────────────────
 if (-not (Test-Path (Join-Path $tauriDir 'tauri.conf.json'))) {
     Fail "client/src-tauri/tauri.conf.json not found under $repoRoot"
 }
-$baselineCommit = 'unknown'
-try {
-    $baselineCommit = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
-    if (-not $baselineCommit) { $baselineCommit = 'unknown' }
-} catch { $baselineCommit = 'unknown' }
+
+# The recorded product commit must be traceable. 1C-D-04@R8 P1: the package must be built from a
+# CLEAN, COMMITTED product head, so `git rev-parse HEAD` really is the product commit and a dirty
+# tree (uncommitted product source) can never be shipped under a hash that does not describe it.
+function Get-GitValue([string[]]$arguments) {
+    try {
+        $value = (& git -C $repoRoot @arguments 2>$null | Out-String).Trim()
+        if ($value) { return $value }
+    } catch { }
+    return $null
+}
+
+$gitStatus = Get-GitValue @('status', '--porcelain')
+if ($null -eq $gitStatus) {
+    Write-Host '   note: git is unavailable; the product commit cannot be verified' -ForegroundColor Yellow
+    $dirty = $false
+} else {
+    $dirty = $gitStatus.Length -gt 0
+}
+$baselineCommit = if ($ProductCommit) { $ProductCommit } else { Get-GitValue @('rev-parse', 'HEAD') }
+if (-not $baselineCommit) { $baselineCommit = 'unknown' }
+
+if ($dirty -and -not $SkipBuild) {
+    Fail ("the worktree has uncommitted changes, so the package cannot record a product commit. " +
+          "Commit the product work first, then build from the clean tree. (Dirty entries:`n$gitStatus)")
+}
+if ($dirty -and $SkipBuild) {
+    Write-Host '   note: -SkipBuild was used with a dirty tree; BUILD-INFO still names the committed head' -ForegroundColor Yellow
+}
+if ($dirty -and $ProductCommit) {
+    Write-Host "   note: worktree is dirty; BUILD-INFO names the explicitly supplied commit $ProductCommit" -ForegroundColor Yellow
+}
 
 $frontendDist = Join-Path $clientDir 'dist'
 
@@ -170,43 +200,62 @@ if (Test-Path $resourceDir) {
 
 # ── 4. Version / baseline / usage notes ───────────────────────────────────────
 $exeHash = (Get-FileHash (Join-Path $stagingDir 'SayIt.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-$buildInfo = @"
+
+# The notes are written from a SINGLE-QUOTED here-string so nothing in them is interpreted:
+# a backtick inside a double-quoted here-string is an escape character, and the previous
+# version silently shipped a form-feed where "frontendDist" should have been.
+$receiverConfigRelative = '%LOCALAPPDATA%\com.sayit.app\watch-receiver.config.json'
+$buildInfoTemplate = @'
 SayIt Watch Transport — unified Windows Debug test package
 =========================================================
 
-Package     : $packageBase
-Built from  : this repository worktree (git HEAD $baselineCommit)
-Build type  : Tauri **Debug** build with the frontend EMBEDDED in the executable.
+Package     : @PACKAGE@
+Built from  : committed product head @GIT_HEAD@
+Build type  : Tauri Debug build with the frontend EMBEDDED in the executable.
 Entry point : SayIt.exe  (same file on every PC — there is no per-PC package)
 Watch app   : 0.3.0-dev.2 (versionCode 6)
 
 Why this is one package for every PC
 ------------------------------------
-The frontend is compiled into SayIt.exe (`frontendDist`), so the unpacked application
-starts on its own. It does NOT need this source tree, Node, npm, Vite or a
-localhost:1420/1421 frontend server. The Debug HTTP receiver and its DNS-SD
-advertisement are unchanged and remain debug-only.
+The frontend is compiled into SayIt.exe (the Tauri "frontendDist" setting), so the unpacked
+application starts on its own. It does NOT need this source tree, Node, npm, Vite or a
+localhost:1420/1421 frontend server. The Debug HTTP receiver and its DNS-SD advertisement are
+unchanged and remain debug-only.
 
-First run on a PC
------------------
-1. Unpack this folder anywhere (a path with spaces or Chinese characters is fine).
+First run on a PC (read this once per computer)
+-----------------------------------------------
+1. Unpack this folder anywhere. A path with spaces or Chinese characters is fine.
 2. Run SayIt.exe.
-3. If the watch receiver cannot start, the app shows a short notice explaining what to
-   do (missing local connection configuration, or the receive port already in use).
-   The notice never contains your token.
-4. The PC needs its own local connection configuration (the watch access token) and its
-   own ASR/provider settings. Nothing is copied between computers by this package.
+3. The watch receiver needs THIS computer's own connection configuration:
+       @RECEIVER_CONFIG@
+   Example (64-hex token; the field name is fixed):
+       {"bindIp":"0.0.0.0","port":18099,"devToken":"<this computer's watch token>"}
+   If that file is missing, the app shows a short notice naming this exact path — it will
+   not tell you to use the desktop Settings page, because that page configures a different
+   feature and cannot set this token.
+4. Bring the token over yourself, by a channel you trust (for example from the computer that
+   already works, using your own encrypted or otherwise private transfer). This package
+   never copies, generates or transmits a token, and no token is included in it.
+5. If the notice instead says the receive port could not be bound, some other program is
+   already using it. Close that program and start SayIt again; this app never ends another
+   process for you.
+6. The PC also needs its own ASR/provider configuration. None of it is copied between
+   computers by this package.
 
 What this package does NOT contain
 ----------------------------------
-No configuration, no token or credential, no model file, no user history, no received
-audio, no source tree, no node_modules, no installer, and no release/auto-update channel.
+No configuration, no token or credential, no model file, no user history, no received audio,
+no source tree, no node_modules, no installer, and no release/auto-update channel.
 
 Unverified by the packager
 --------------------------
 Real-device (Galaxy Watch) discovery, two-PC switching and recording-to-text were NOT
 verified by the packager of this ZIP. Those remain with the project owner.
-"@
+'@
+$buildInfo = $buildInfoTemplate.
+    Replace('@PACKAGE@', $packageBase).
+    Replace('@GIT_HEAD@', $baselineCommit).
+    Replace('@RECEIVER_CONFIG@', $receiverConfigRelative)
 Set-Content -Path (Join-Path $stagingDir 'README-PORTABLE.txt') -Value $buildInfo -Encoding UTF8
 
 $versionInfo = @"
@@ -216,6 +265,7 @@ build=debug
 frontend=embedded
 watch=0.3.0-dev.2 (versionCode 6)
 git_head=$baselineCommit
+receiver_config=$receiverConfigRelative
 SayIt.exe.sha256=$exeHash
 "@
 Set-Content -Path (Join-Path $stagingDir 'BUILD-INFO.txt') -Value $versionInfo -Encoding UTF8
@@ -231,6 +281,41 @@ $lines = foreach ($file in $payload) {
     "$hash  $relative"
 }
 Set-Content -Path (Join-Path $stagingDir 'SHA256SUMS') -Value ($lines -join "`n") -Encoding UTF8
+
+# ── 5b. Static checks on the generated notes ──────────────────────────────────
+# The notes are read by a human on a machine that has nothing else, so they must be plain text,
+# name the real configuration path, and never contain an interpreted escape that turned into a
+# control character while the package was generated.
+Write-Step 'Checking the generated notes (text, path, no control characters)'
+foreach ($noteName in @('README-PORTABLE.txt', 'BUILD-INFO.txt')) {
+    $notePath = Join-Path $stagingDir $noteName
+    $noteBytes = [System.IO.File]::ReadAllBytes($notePath)
+    foreach ($b in $noteBytes) {
+        # Tab, LF and CR are the only control characters a text note may contain.
+        if ($b -lt 0x20 -and $b -ne 0x09 -and $b -ne 0x0A -and $b -ne 0x0D) {
+            Fail "$noteName contains a control character (0x$('{0:X2}' -f $b)); an escape was interpreted while generating it"
+        }
+    }
+}
+$readmeText = [System.IO.File]::ReadAllText((Join-Path $stagingDir 'README-PORTABLE.txt'))
+foreach ($required in @(
+    $receiverConfigRelative,
+    '手表访问令牌',
+    'frontendDist',
+    'SayIt.exe'
+)) {
+    if (-not $readmeText.Contains($required)) {
+        Fail "README-PORTABLE.txt must mention $required"
+    }
+}
+foreach ($forbidden in @('SayIt 设置', '服务器访问令牌')) {
+    if ($readmeText.Contains($forbidden)) {
+        Fail "README-PORTABLE.txt must not point at the non-existent destination $forbidden"
+    }
+}
+if (-not ([System.IO.File]::ReadAllText((Join-Path $stagingDir 'BUILD-INFO.txt'))).Contains("git_head=$baselineCommit")) {
+    Fail 'BUILD-INFO.txt must record the product commit it was built from'
+}
 
 # ── 6. ZIP ────────────────────────────────────────────────────────────────────
 Write-Step "Creating $zipPath"

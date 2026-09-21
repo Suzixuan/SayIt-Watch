@@ -473,21 +473,26 @@ class RecordingViewModel(
      * after the Watch no longer needs an app restart.
      */
     private val taskOwner = ConnectionTaskOwner(
-        resolveNow = { resolveAutomatically() },
+        resolveNow = { force -> resolveAutomatically(force) },
         browseForPicker = { browseForSwitch() },
+        /** A SEARCH round starts from scratch, so any previous usable state is dropped. */
         cancelTransport = {
             resolver.onTargetInvalidated()
             coordinator?.invalidate()
             setVerifiedDestination(null)
         },
         /**
-         * 1C-D-04@R7 必修 2: an explicit switch browse must PRESERVE the computer in
-         * use. `cancelTransport` releases the resolution to Idle, and unlike a
-         * resolution round it deletes the shared `resolver`. `handleSwitchBrowse`
-         * releases its own run and keeps both the remembered list and the target, so
-         * cancelling the picker still leaves the working computer selected.
+         * 1C-D-04@R8 P0-A: handing the resolution over to an explicit switch browse must NOT
+         * touch the computer in use. R7 used `onTargetInvalidated()`, which clears the engine's
+         * verified target while the ViewModel's own copy still pointed at the old computer — one
+         * switch and the two sources of truth disagreed, so the scheduler searched while the page
+         * still offered recording. Now the engine's run is released (generation bumped, late
+         * results dropped) and the live browse is stopped, but the target survives.
          */
-        cancelForRefresh = { resolver.onTargetInvalidated() },
+        cancelForRefresh = {
+            resolver.releaseAutomaticRunKeepTarget()
+            coordinator?.stopBrowseOnly()
+        },
         isConnected = { resolver.hasVerifiedTarget },
         probeCurrentTarget = { revalidateCurrentTarget() },
         onStarted = { ownerRoundStarted() },
@@ -497,10 +502,9 @@ class RecordingViewModel(
     )
 
     init {
-                // Startup rule: a valid saved token is enough to reach Ready. The address
-        // is re-probed / discovered there instead of being a manual prerequisite.
-        // Until that completes, `transportAvailable` is false and recording is a
-        // no-op (Repair 1 必修 2).
+        // Startup rule: a valid saved token is enough to reach Ready. The address is re-probed /
+        // discovered there instead of being a manual prerequisite. Until that completes,
+        // `transportAvailable` is false and recording is a no-op (Repair 1 必修 2).
         uiEvent { it.startupWith(settings.hasValidToken()) }
     }
 
@@ -517,13 +521,18 @@ class RecordingViewModel(
         appInForeground = true
         if (!settings.hasValidToken()) return
         uiEvent(WatchUiStateMachine::searchingStarted)
-                taskOwner.onForegroundChanged(true)
+        taskOwner.resumeForeground()
     }
 
-    /** 1C-D-04@R7 §2A: leaving the foreground cancels the task and all scheduling. */
+    /**
+     * 1C-D-04@R7 §2A / R8 P0-C: leaving the foreground cancels the round in flight, stops the
+     * transport and ends all scheduling — probing included. Every unfinished result is
+     * invalidated by the transport's generation gate, so nothing may update the UI, the target
+     * or the settings afterwards.
+     */
     fun onBackground() {
         appInForeground = false
-        taskOwner.onForegroundChanged(false)
+        taskOwner.pauseForeground()
         uiEvent(WatchUiStateMachine::connectionRoundFinished)
     }
 
@@ -547,9 +556,14 @@ class RecordingViewModel(
     /**
      * Records the authenticated target and publishes it to the UI.
      *
-     * Repair 1 必修 2/3: this is the single point where an upload target comes into
-     * existence, and it is only ever called with an endpoint that authenticated —
-     * either the coordinator's exactly-one verdict or a successful manual probe.
+     * Repair 1 必修 2/3: this is the single point where an upload target comes into existence, and
+     * it is only ever called with an endpoint that authenticated — either the coordinator's
+     * exactly-one verdict or a successful manual probe.
+     *
+     * 1C-D-04@R8 P0-A: the field is written FIRST and both UI updates are derived from it, so the
+     * state machine's `currentTarget` can never be published from the previous value. (R7 called
+     * `destinationResolved()` before refreshing the target, which is how the page could briefly
+     * advertise a computer the resolver had already dropped.)
      */
     private fun setVerifiedDestination(selection: DiscoverySelection?) {
         verifiedDestination = selection
@@ -559,6 +573,7 @@ class RecordingViewModel(
         } else {
             uiEvent { it.healthChecked(false) }
         }
+        // Runs AFTER the state update above, so it reads the value that was just written.
         publishTargets()
     }
 
@@ -699,18 +714,21 @@ class RecordingViewModel(
     fun onReadyEntered() {
         if (!settings.hasValidToken()) return
         if (!appInForeground) return
+        // 1C-D-04@R8 P0-B: entering Ready must never cost the connection. With a computer in use
+        // this expresses a REVALIDATION (one bounded probe, target kept); only a disconnected
+        // screen asks for a full search.
         if (resolver.hasVerifiedTarget) {
             resolver.verifiedTarget?.let { setVerifiedDestination(it) }
         }
-        uiEvent(WatchUiStateMachine::searchingStarted)
-                taskOwner.requestRefresh(ConnectionTaskOwner.Pending.SEARCH)
+        taskOwner.requestRefresh(ConnectionTaskOwner.Pending.SEARCH_KEEP)
     }
 
     /**
-     * Explicit (re)resolution: the upload-failure path and the health check.
+     * Explicit (re)resolution: the upload-failure path and the user's "重新搜索".
      *
-     * 1C-D-04@R7 §2A: this cancels the round in flight and starts the newest one — the
-     * user's "重新搜索" is never silently refused because an older round is running.
+     * 1C-D-04@R7 §2A: this cancels the round in flight and starts the newest one — the user's
+     * re-search is never silently refused because an older round is running. R8: it is a FULL
+     * search, so the previous usable state is dropped first, which is what makes it a real retry.
      */
     fun startDiscovery() {
         if (!settings.hasValidToken()) {
@@ -719,7 +737,7 @@ class RecordingViewModel(
         }
         if (!schedulingAllowed()) return
         uiEvent(WatchUiStateMachine::searchingStarted)
-                taskOwner.restartNow(ConnectionTaskOwner.Pending.SEARCH)
+        taskOwner.restartNow(ConnectionTaskOwner.Pending.SEARCH)
     }
 
     /** Reflects the bridge's verdict on the UI/target state. */
@@ -751,7 +769,7 @@ class RecordingViewModel(
         resolver.openPicker()
         uiEvent(WatchUiStateMachine::switchOpened)
         publishTargets()
-                taskOwner.restartNow(ConnectionTaskOwner.Pending.BROWSE)
+        taskOwner.restartNow(ConnectionTaskOwner.Pending.BROWSE)
     }
 
     /**
@@ -817,10 +835,28 @@ class RecordingViewModel(
         }
     }
 
-    /** Closes the picker without changing the target. */
+    /**
+     * Closes the picker without changing the target.
+     *
+     * 1C-D-04@R8 P0-C: closing the picker must also end the browse it started. R7 only closed the
+     * sheet, so a hidden picker could keep browsing (and publishing candidates) behind the user's
+     * back. The run is cancelled first — and awaited, because the owner joins the cancelled round
+     * — then the owner is returned to its stable loop over the CURRENT target: the health loop
+     * while a computer is in use, the recovery search when there is none.
+     */
     fun dismissSwitchPicker() {
         resolver.cancelPicker()
         uiEvent(WatchUiStateMachine::switchClosed)
+        val kept = resolver.verifiedTarget
+        // Cancel-first: the owner stops and JOINS the BROWSE round, so the browse/NSD session is
+        // really over before anything else is scheduled (no hidden browse, no second listener).
+        taskOwner.stop()
+        resolver.releaseAutomaticRunKeepTarget()
+        if (!appInForeground) return
+        // Then hand over to the stable loop for the CURRENT target (health loop when a computer is
+        // in use, recovery search when there is none) — never another hidden BROWSE.
+        taskOwner.revalidateNow()
+        if (kept != null) setVerifiedDestination(kept)
     }
 
     /**
@@ -855,26 +891,49 @@ class RecordingViewModel(
     /** 1C-D-04@R7 test seam: the intent waiting to run. */
     val ownerPendingForTest: ConnectionTaskOwner.Pending? get() = taskOwner.pendingIntent
 
+    /** 1C-D-04@R8 test seam: what the connection loop is doing right now. */
+    val ownerRoundKindForTest: ConnectionTaskOwner.RoundKind get() = taskOwner.roundKind
+
     /**
-     * Runs automatic discovery through the bridge, then reflects its verdict.
+     * 1C-D-04@R8 test seam: true while the ViewModel believes the app is in the foreground.
      *
-     * The generation gate lives in [ResolverBridge]/[ResolverEngine], so a run that
-     * was superseded (Config opened, manual submitted, upload failure, teardown)
-     * neither publishes a verdict nor writes settings.
+     * Used to pin that a transfer finishing in the background does not flip the lifecycle flag.
      */
+    val appInForegroundForTest: Boolean get() = appInForeground
+
+    /**
+     * 1C-D-04@R8 test seam: the resolver's own idea of the target.
+     *
+     * It must always equal [currentDestination]. The R8 P0-A defect was precisely these two
+     * drifting apart the moment an explicit switch started.
+     */
+    val resolverTargetForTest: DiscoverySelection? get() = resolver.verifiedTarget
+
     /**
      * Runs one resolution round and reflects its verdict.
      *
-     * The verdict is applied when the bridge accepted the round AND whenever a verified
-     * target exists afterwards, so a target that became valid while a superseded round
-     * was winding down still reaches the UI.
+     * The verdict is applied when the bridge accepted the round AND whenever a verified target
+     * exists afterwards, so a target that became valid while a superseded round was winding down
+     * still reaches the UI.
      */
     private suspend fun useRound(run: suspend () -> Boolean) {
         val accepted = run()
         if (accepted || resolver.hasVerifiedTarget) applyResolverVerdict()
     }
 
-    private suspend fun resolveAutomatically() {
+    /**
+     * One round of the task owner's SEARCH intent.
+     *
+     * @param force true for a full resolution (the usable state was already dropped), false for a
+     *   revalidation: with a computer in use that is ONE bounded authenticated probe of the
+     *   current target, which keeps the connection and the recording gate intact and never opens
+     *   a browse. Only when there is nothing to revalidate does it fall through to a full search.
+     */
+    private suspend fun resolveAutomatically(force: Boolean) {
+        if (!force && resolver.hasVerifiedTarget) {
+            if (revalidateCurrentTarget()) return
+            // The target stopped answering: recovery owns the rest of this round.
+        }
         useRound {
             resolver.onReadyEntered(isResolvingElsewhere = coordinator?.isResolving == true)
         }
@@ -905,9 +964,18 @@ class RecordingViewModel(
         return ok
     }
 
-    /** 1C-D-04@R7 §2A: a round started — history is not online evidence. */
+    /**
+     * 1C-D-04@R7 §2A / R8 P0-B: an intent round started.
+     *
+     * Only a FULL search says "connecting": it really did drop the usable state, so the screen
+     * must not keep claiming a connection while it runs. A revalidation probe keeps the current
+     * computer and its recording gate, so it is deliberately not presented as a connection change
+     * — that is what stops an idle connected Watch from flickering between "已连接电脑" and
+     * "正在连接…" every five seconds.
+     */
     private fun ownerRoundStarted() {
         if (!schedulingAllowed()) return
+        if (taskOwner.roundKind != ConnectionTaskOwner.RoundKind.SEARCH) return
         uiEvent(WatchUiStateMachine::connectionChecking)
     }
 
@@ -931,7 +999,12 @@ class RecordingViewModel(
         stopConnectionTask()
     }
 
-    /** 1C-D-04@R7 test seam: resumes the bounded idle health check. */
+    /**
+     * 1C-D-04@R7/R8 test seam: reports that the one-shot transfer is over.
+     *
+     * It goes through the same production path the upload completion uses, so a test can pin that
+     * a transfer finishing in the background resumes NOTHING and does not flip the lifecycle flag.
+     */
     internal fun resumeConnectionTaskForTest() {
         resumeConnectionTask()
     }
@@ -1155,21 +1228,28 @@ class RecordingViewModel(
         prepare()
         syncState()
         uiEvent(WatchUiStateMachine::uploadFinished)
-        // A failed/undeliverable upload re-runs discovery for the *next* attempt
-        // only — it never re-sends the audio that already failed.
+        // A failed/undeliverable upload re-runs a full discovery for the *next* attempt only —
+        // it never re-sends the audio that already failed.
         if (reDiscover) startDiscovery() else resumeConnectionTask()
     }
 
     /**
-     * 1C-D-04@R7 §2A: recording and upload are finished, so the bounded health check
-     * for the computer in use may resume. Nothing is started when the token is gone or
-     * the app is not in the foreground.
+     * 1C-D-04@R7 §2A / R8 P0-C: recording and upload are finished, so the bounded health check
+     * for the computer in use may resume.
+     *
+     * It NEVER writes the lifecycle itself: an upload that completes while the app is in the
+     * background must not switch `appInForeground` back on. The real state is the only input, so a
+     * background completion resumes nothing (and the next `onForeground()` revalidates).
      */
     private fun resumeConnectionTask() {
-        appInForeground = true
+        if (!appInForeground) return
         if (!settings.hasValidToken()) return
         if (!schedulingAllowed()) return
-        taskOwner.requestRefresh(ConnectionTaskOwner.Pending.SEARCH)
+        if (taskOwner.isForeground) {
+            taskOwner.requestRefresh(ConnectionTaskOwner.Pending.SEARCH_KEEP)
+        } else {
+            taskOwner.resumeForeground()
+        }
     }
 
     fun reset() {

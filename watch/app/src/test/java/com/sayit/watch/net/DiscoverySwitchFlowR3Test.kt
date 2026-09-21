@@ -179,20 +179,19 @@ class DiscoverySwitchFlowR3Test {
         fun switchAndWait(timeoutMs: Long = 20_000L) {
             viewModel.requestSwitch()
             val deadline = System.currentTimeMillis() + timeoutMs
+            var sawBrowse = false
             while (System.currentTimeMillis() < deadline) {
                 if (viewModel.ui.value.switchSearching && coordinator.isRunning) {
-                    // The replacement browse really opened; now wait for it to settle.
-                    while (System.currentTimeMillis() < deadline) {
-                        if (!coordinator.isRunning && !viewModel.ui.value.switchSearching) {
-                            Thread.sleep(40)
-                            if (!coordinator.isRunning) return
-                        }
-                        Thread.sleep(10)
-                    }
-                    break
+                    sawBrowse = true
                 }
-                // Nothing may be left running once the round has settled.
-                if (!coordinator.isRunning && !viewModel.ui.value.switchSearching) {
+                // The browse is settled only when BOTH the transport and the owner's round are
+                // done. 1C-D-04@R8: without the owner check this returned during the hand-off's
+                // cancellation window, which made later count assertions timing-dependent.
+                if (sawBrowse && !coordinator.isRunning && !viewModel.ui.value.switchSearching) {
+                    Thread.sleep(40)
+                    if (!coordinator.isRunning && !viewModel.isConnectionTaskRunningForTest) return
+                }
+                if (!sawBrowse && !coordinator.isRunning && !viewModel.isConnectionTaskRunningForTest) {
                     Thread.sleep(40)
                     if (!coordinator.isRunning && !viewModel.isConnectionTaskRunningForTest) return
                 }
@@ -278,17 +277,29 @@ class DiscoverySwitchFlowR3Test {
     @Test
     fun `no current target and one new computer is offered in one browse`() {
         val h = harness()
-        // 1C-D-04@R7: the app must be in the foreground for any round to run.
+        // 1C-D-04@R8: the owner searches on its own while there is no target, so this test freezes
+        // it BEFORE the first round can browse. That is the only way "no candidate adopted" is a
+        // statement about the switch instead of a race with the recovery loop.
+        h.discovery.next = emptyList()
         h.viewModel.onForeground()
-        h.discovery.next = listOf(realService(newPc.ip))
-        h.switchAndWait()
+        h.viewModel.pauseConnectionTaskForTest()
+        val startsBefore = h.discovery.startCount
 
-        assertNull("the browse itself must not adopt", h.viewModel.currentDestination())
-        assertEquals(1, h.discovery.startCount)
+        h.discovery.next = listOf(realService(newPc.ip))
+        h.viewModel.requestSwitch()
+        waitUntil("the browse must be offered") {
+            h.viewModel.switchEntries().any { it.target == newPc }
+        }
         assertEquals(
             "the single candidate must be offered",
             listOf(newPc),
             h.viewModel.switchEntries().map { it.target },
+        )
+        assertNull("the browse itself must not adopt", h.viewModel.currentDestination())
+        assertEquals(
+            "the user's switch must be exactly one browse (no saved-address re-probe)",
+            startsBefore + 1,
+            h.discovery.startCount,
         )
 
         h.viewModel.onTargetPicked(newPc)
@@ -885,22 +896,28 @@ class DiscoverySwitchFlowR3Test {
         // R7: Ready entry is what establishes the foreground round.
         viewModel.onForeground()
         waitUntil("Ready must verify the saved computer") { viewModel.currentDestination() == oldPc }
+        // 1C-D-04@R8: freeze the loop first and take the baseline AFTER it settled, so the count
+        // below is about the two explicit presses and not about the eager first round.
         viewModel.pauseConnectionTaskForTest()
+        val startsBefore = browser.startCount
 
         viewModel.requestSwitch()
+        // 1C-D-04@R8: `switchSearching` can be raised a moment before the platform browser is
+        // actually opened, so the count is asserted only once the browse really exists.
         waitUntil("the search state must be published") { viewModel.ui.value.switchSearching }
+        waitUntil("the browse must really be open") { browser.startCount > startsBefore }
         assertEquals("the old computer stays usable while searching", oldPc, viewModel.currentDestination())
-        assertEquals("the browse must have opened once", 1, browser.startCount)
+        assertEquals("the press must have opened exactly one browse", startsBefore + 1, browser.startCount)
 
         // 1C-D-04@R7 §2A: the user pressed 重新搜索 again while the window is open. The
         // newest intent must win — the running browse is cancelled and a replacement
         // starts, so the button is never a silent no-op and rounds never accumulate.
         viewModel.requestSwitch()
-        waitUntil("the replacement browse must start") { browser.startCount >= 2 }
+        waitUntil("the replacement browse must start") { browser.startCount > startsBefore + 1 }
         Thread.sleep(150)
         assertTrue(
-            "clicks must replace, not stack (two presses can open at most two browsers): ${browser.startCount}",
-            browser.startCount <= 2,
+            "clicks must replace, not stack (two presses open at most two browsers): ${browser.startCount}",
+            browser.startCount <= startsBefore + 2,
         )
         assertEquals("the old computer stays usable throughout", oldPc, viewModel.currentDestination())
 

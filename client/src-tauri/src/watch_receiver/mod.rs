@@ -34,14 +34,25 @@ pub enum ReceiverStartError {
 }
 
 impl ReceiverStartError {
-    /// The user-facing sentence shown by the app. Chinese, short, no secrets.
+    /// The user-facing sentence shown by the app: short, actionable, and free of any
+    /// configuration VALUE, token, raw OS error or non-existent UI destination.
+    ///
+    /// 1C-D-04@R8 P1: the previous wording told the user to fill the Watch token in "SayIt 设置".
+    /// That entry does not exist in this repository — the desktop app's token field configures a
+    /// different feature — so the message now names the only real source: the receiver
+    /// configuration file, whose presence is a per-PC setup step this package never performs for
+    /// the user.
     pub fn user_message(self) -> &'static str {
         match self {
             ReceiverStartError::MissingConfig => {
-                "本机还没有连接配置：手表传输无法启动。\n请在 SayIt 设置里填写本机的访问令牌后重试。"
+                "本机还没有手表接收配置，手表传输无法启动。\n\
+                 配置路径：%LOCALAPPDATA%\\com.sayit.app\\watch-receiver.config.json\n\
+                 请在该文件里填入手表访问令牌后重新打开本程序。该文件由本机自己维护，\
+                 不会自动生成，也不会随安装包分发。"
             }
             ReceiverStartError::BindFailed => {
-                "手表接收端口无法绑定：可能已被其它程序占用。\n请关闭占用该端口的程序后重试；不会结束任何现有进程。"
+                "手表接收端口无法绑定：可能已被其它程序占用。\n\
+                 请关闭占用该端口的程序后重试；本程序不会结束任何现有进程。"
             }
         }
     }
@@ -236,19 +247,21 @@ mod tests {
             let message = error.user_message();
             assert!(!message.is_empty(), "a failure needs a visible sentence");
             assert!(
-                message.chars().count() <= 140,
+                message.chars().count() <= 220,
                 "the visible message must stay short: {message}"
             );
-            // Never echo a configuration value, a token, a path or a raw OS error.
+            // Never echo a configuration VALUE, a token, a raw OS error or an unrelated feature.
             for forbidden in [
                 "token=",
-                "SAYIT_WATCH",
+                "SAYIT_WATCH_DEV_TOKEN",
                 "18099",
                 "192.168",
-                "C:\\",
                 "os error",
                 "Microsoft",
                 "Bearer",
+                // 1C-D-04@R8 P1: this entry does not exist; pointing the user at it is a defect.
+                "SayIt 设置",
+                "服务器访问令牌",
             ] {
                 assert!(
                     !message.contains(forbidden),
@@ -256,6 +269,30 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn missing_config_points_at_the_real_receiver_config_file() {
+        // 1C-D-04@R8 P1: the only actionable destination is the receiver configuration file. The
+        // message must name it, and must NOT tell the user to use the desktop "设置" entry (which
+        // configures a different feature and cannot set this token).
+        let message = super::ReceiverStartError::MissingConfig.user_message();
+        assert!(
+            message.contains("%LOCALAPPDATA%\\com.sayit.app\\watch-receiver.config.json"),
+            "the missing-config notice must name the real config path: {message}"
+        );
+        assert!(
+            message.contains("手表访问令牌"),
+            "the notice must name what has to be filled in: {message}"
+        );
+        assert!(
+            !message.contains("设置"),
+            "the notice must not point at a settings entry that does not exist: {message}"
+        );
+        // The path is a template, never this machine's expanded value, and the file content is
+        // never shown.
+        assert!(!message.contains("C:\\Users"));
+        assert!(!message.contains("devToken"));
     }
 
     #[test]

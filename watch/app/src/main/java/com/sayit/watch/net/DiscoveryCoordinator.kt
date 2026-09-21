@@ -294,6 +294,25 @@ class DiscoveryCoordinator(
     }
 
     /**
+     * 1C-D-04@R8 P0-A — stops an in-flight browse and invalidates its result WITHOUT dropping
+     * the endpoint authenticated in this session.
+     *
+     * `stop()` is the "the connection is over" path (it clears `resolved`). This is the
+     * hand-over path used before an explicit switch browse: the old browse/NSD session must be
+     * gone before a new listener opens, but the computer the user is on must survive, so the
+     * engine, the bridge, the ViewModel's target and the recording gate keep agreeing.
+     */
+    fun stopBrowseOnly() {
+        synchronized(runLock) {
+            runCounter++
+            inFlight?.cancel()
+            inFlight = null
+            stopBrowser?.invoke()
+            stopBrowser = null
+        }
+    }
+
+    /**
      * Authenticated probe of one explicit destination (the manual IP/port path),
      * bounded by the same saved-address phase budget. Never browses and never
      * writes settings.
@@ -968,9 +987,25 @@ class ResolverEngine(
     }
 
     /**
-     * 1C-D-04@R7: releases the automatic run without touching the verified target. Used
-     * when a browse ends and the resolution is no longer owned, while the computer in use
-     * must survive (an explicit switch that was cancelled or that found nothing).
+     * 1C-D-04@R8 P0-A — ends the automatic run WITHOUT touching the verified target.
+     *
+     * `cancelLocked()` (used by `onConfigEntered` / `onTargetInvalidated`) clears the target,
+     * which is right when the connection is genuinely gone and wrong when the resolution is
+     * merely being handed over (an explicit switch browse). This variant bumps the generation —
+     * so a late result from the cancelled run can never land — and leaves the authenticated
+     * target in place, which keeps one single source of truth across the engine, the bridge, the
+     * ViewModel and the recording gate.
+     */
+    fun cancelAutomaticRunKeepTarget() {
+        generationCounter++
+        mode = ResolverMode.Idle
+        onCancelAutomatic()
+    }
+
+    /**
+     * Releases the automatic run without touching the verified target. Used when a browse ends
+     * and the resolution is no longer owned, while the computer in use must survive (an explicit
+     * switch that was cancelled or that found nothing).
      */
     fun releaseAutomaticRun() {
         if (mode is ResolverMode.Automatic) {
@@ -1322,6 +1357,20 @@ class ResolverBridge(
     fun onTargetInvalidated() {
         engine.onTargetInvalidated()
         lastPublishedState = null
+    }
+
+    /**
+     * 1C-D-04@R8 P0-A — releases the automatic run and stops the transport while KEEPING the
+     * computer in use.
+     *
+     * Used when the resolution is handed over (an explicit switch browse) as opposed to
+     * cancelled because the connection is gone. The engine's generation is bumped so a late
+     * result cannot publish, the transport is stopped so the old browse/NSD session really ends,
+     * and `verifiedTarget`/`hasVerifiedTarget` are left untouched — the UI, the ViewModel's
+     * `verifiedDestination` and the recording gate therefore keep describing the same computer.
+     */
+    fun releaseAutomaticRunKeepTarget() {
+        engine.cancelAutomaticRunKeepTarget()
     }
 
     /** Screen/ViewModel teardown. */

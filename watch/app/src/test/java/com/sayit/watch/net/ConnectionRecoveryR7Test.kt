@@ -233,7 +233,7 @@ class ConnectionRecoveryR7Test {
 
     @Test
     fun `an offline computer stops being presented as connected while the app is idle`() {
-        val h = harness(retryMs = 120L, healthMs = 120L)
+        val h = harness(retryMs = 150L, healthMs = 150L)
         h.discovery.candidates = listOf(realService(desktop.ip))
         h.probe.reachable = setOf("${desktop.ip}:${desktop.port}")
         h.viewModel.onForeground()
@@ -242,8 +242,10 @@ class ConnectionRecoveryR7Test {
         }
         assertTrue(h.viewModel.ui.value.connected)
 
-        // The desktop goes away.
+        // 1C-D-04@R8: the desktop goes away and stops advertising itself as well. Without this the
+        // recovery browse would simply re-authenticate it and the test would be timing-dependent.
         h.probe.reachable = emptySet()
+        h.discovery.candidates = emptyList()
         waitUntil("the bounded health check must notice", timeoutMs = 15_000L) {
             h.viewModel.currentDestination() == null
         }
@@ -411,6 +413,9 @@ class ConnectionRecoveryR7Test {
         waitUntil("the desktop must connect", timeoutMs = 15_000L) {
             h.viewModel.currentDestination() == desktop
         }
+        // 1C-D-04@R8: the automatic health loop would open its own browse and blur the count, so it
+        // is paused while this test measures the user's single explicit switch.
+        h.viewModel.pauseConnectionTaskForTest()
 
         // Exactly ONE new computer answers the explicit switch browse.
         h.discovery.candidates = listOf(realService(desktop.ip), realService(laptop.ip))
@@ -464,22 +469,24 @@ class ConnectionRecoveryR7Test {
     @Test
     fun `picking a computer that stopped answering changes nothing`() {
         val h = harness(retryMs = 5_000L)
-        h.discovery.candidates = listOf(realService(desktop.ip), realService(laptop.ip))
-        h.probe.reachable = setOf("${desktop.ip}:${desktop.port}", "${laptop.ip}:${laptop.port}")
-        h.viewModel.onForeground()
-        // Exactly one candidate authenticates at a time, so a single browse connects.
         h.discovery.candidates = listOf(realService(desktop.ip))
+        h.probe.reachable = setOf("${desktop.ip}:${desktop.port}")
+        h.viewModel.onForeground()
         waitUntil("the desktop must connect", timeoutMs = 15_000L) {
             h.viewModel.currentDestination() == desktop
         }
+        // 1C-D-04@R8: freeze the automatic loop FIRST. The health check would otherwise keep
+        // re-probing the desktop and could clear the target exactly while this test is measuring a
+        // refused pick, which made the assertion below depend on timing rather than behaviour.
+        h.viewModel.pauseConnectionTaskForTest()
+
         // The laptop must be an offered candidate before it can be picked.
-        h.viewModel.requestSwitch()
         h.discovery.candidates = listOf(realService(desktop.ip), realService(laptop.ip))
+        h.probe.reachable = setOf("${desktop.ip}:${desktop.port}", "${laptop.ip}:${laptop.port}")
+        h.viewModel.requestSwitch()
         waitUntil("the laptop must be offered", timeoutMs = 15_000L) {
             h.viewModel.switchEntries().any { it.target == laptop }
         }
-        // The automatic loop would re-verify the desktop and blur the measurement.
-        h.viewModel.pauseConnectionTaskForTest()
 
         // The laptop goes away before the user picks it.
         h.probe.reachable = setOf("${desktop.ip}:${desktop.port}")
