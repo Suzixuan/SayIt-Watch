@@ -1,5 +1,11 @@
 # SayIt Watch Transport handoff
 
+## R7 PM 验收 NO-GO；当前返修 1C-D-04@R8（2026-09-20，待发送）
+
+- D 的 R7 交付头 `89cedd04bda3609e2286c92172fafbc896d640b8`，工作树干净。PM 独立复跑 Watch：210/210、lint、Debug build 退出码 0；APK SHA-256 `94833AE084EB29845B5554ACD1E79D922F59381D4C490BC78FDDA1D0F141E717`。统一 ZIP SHA-256 `86A37BF63F1BDF8CEC542CC82DE5278454F97BFA43C5DE060E1CE47D8A4294F5`，从 ZIP 独立解压得到 EXE `F12D28C90A8DA62BB03CFE53127186B20AB3F87295F1E404A7C3D889F334AB92`，28 条 SHA256SUMS 全部一致。Rust 新编译受本机既有 transcribe CMake 缓存失败阻断；D 报告的 live-multicast 用例亦未通过。
+- 源码阻断：切换开始使用 `resolver.onTargetInvalidated()`，在 Resolver 内清掉当前目标，造成 Resolver 与 UI 目标分裂；已连接健康探针结束后固定进入完整 SEARCH，每周期再次清目标；取消 picker、cancel-and-join、后台探针和上传后前台状态亦未封闭。便携包 MissingConfig 提示指向不存在的 Watch Token 设置，README 还有控制字符，BUILD-INFO 记录的是产品提交前的 `d32821c`。因此不安装 R7 APK、不替换桌面软件，R7 核心验收失败。
+- 同范围 R8 包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R8.md`。只修保持当前目标、已连接只健康探针、取消/后台/任务串行，以及便携提示和可追溯重建；晚启动与 R7 视觉成果须保留。当前待发送，阶段 10/12 均未通过。
+
 ## 当前有效返修：1C-D-04@R7（2026-09-20，已发送，D 执行中）
 
 - 用户批准统一便携包与连接全流程返修。唯一任务包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R7.md`；上一 D 版本 R6，继承 PM UI R4。产品基线 main `17e59afde86ccf971b3d6ef1e777f841dece7224`，开发分支 `codex/watch-connection-r7`，工作树 `C:/Users/suzix/Documents/ChatGPT/SayIt-Watch-sync`；旧 `../Saylt` 不再写产品源码。
