@@ -205,6 +205,8 @@ $exeHash = (Get-FileHash (Join-Path $stagingDir 'SayIt.exe') -Algorithm SHA256).
 # a backtick inside a double-quoted here-string is an escape character, and the previous
 # version silently shipped a form-feed where "frontendDist" should have been.
 $receiverConfigRelative = '%LOCALAPPDATA%\com.sayit.app\watch-receiver.config.json'
+# Notes are written as explicit UTF-8 (no BOM) so the bytes are deterministic on any Windows.
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $buildInfoTemplate = @'
 SayIt Watch Transport — unified Windows Debug test package
 =========================================================
@@ -256,7 +258,7 @@ $buildInfo = $buildInfoTemplate.
     Replace('@PACKAGE@', $packageBase).
     Replace('@GIT_HEAD@', $baselineCommit).
     Replace('@RECEIVER_CONFIG@', $receiverConfigRelative)
-Set-Content -Path (Join-Path $stagingDir 'README-PORTABLE.txt') -Value $buildInfo -Encoding UTF8
+[System.IO.File]::WriteAllText((Join-Path $stagingDir 'README-PORTABLE.txt'), $buildInfo, $utf8NoBom)
 
 $versionInfo = @"
 package=$packageBase
@@ -268,7 +270,7 @@ git_head=$baselineCommit
 receiver_config=$receiverConfigRelative
 SayIt.exe.sha256=$exeHash
 "@
-Set-Content -Path (Join-Path $stagingDir 'BUILD-INFO.txt') -Value $versionInfo -Encoding UTF8
+[System.IO.File]::WriteAllText((Join-Path $stagingDir 'BUILD-INFO.txt'), $versionInfo, $utf8NoBom)
 
 # ── 5. SHA256SUMS over the payload (not over itself) ──────────────────────────
 Write-Step 'Computing SHA256SUMS'
@@ -280,7 +282,7 @@ $lines = foreach ($file in $payload) {
     $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $relative"
 }
-Set-Content -Path (Join-Path $stagingDir 'SHA256SUMS') -Value ($lines -join "`n") -Encoding UTF8
+[System.IO.File]::WriteAllText((Join-Path $stagingDir 'SHA256SUMS'), ($lines -join "`n"), $utf8NoBom)
 
 # ── 5b. Static checks on the generated notes ──────────────────────────────────
 # The notes are read by a human on a machine that has nothing else, so they must be plain text,
@@ -297,7 +299,7 @@ foreach ($noteName in @('README-PORTABLE.txt', 'BUILD-INFO.txt')) {
         }
     }
 }
-$readmeText = [System.IO.File]::ReadAllText((Join-Path $stagingDir 'README-PORTABLE.txt'))
+$readmeText = [System.IO.File]::ReadAllText((Join-Path $stagingDir 'README-PORTABLE.txt'), [System.Text.Encoding]::UTF8)
 foreach ($required in @(
     $receiverConfigRelative,
     '手表访问令牌',
@@ -313,7 +315,7 @@ foreach ($forbidden in @('SayIt 设置', '服务器访问令牌')) {
         Fail "README-PORTABLE.txt must not point at the non-existent destination $forbidden"
     }
 }
-$buildInfoText = [System.IO.File]::ReadAllText((Join-Path $stagingDir 'BUILD-INFO.txt'))
+$buildInfoText = [System.IO.File]::ReadAllText((Join-Path $stagingDir 'BUILD-INFO.txt'), [System.Text.Encoding]::UTF8)
 if (-not $buildInfoText.Contains("git_head=$baselineCommit")) {
     Fail 'BUILD-INFO.txt must record the product commit it was built from'
 }
