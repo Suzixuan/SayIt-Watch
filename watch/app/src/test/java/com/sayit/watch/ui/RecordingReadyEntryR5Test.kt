@@ -77,32 +77,30 @@ class RecordingReadyEntryR5Test {
     @Test
     fun `a saved address verdict is never worded as a new automatic discovery`() {
         // `saved-probe:accepted` / `verdict:one` reaches the UI as ExistingAddress.
-        val saved = readyStatusTextRes(DiscoveryState.ExistingAddress, hasVerifiedTarget = true)
+        val saved = readyStatusTextRes(DiscoveryState.ExistingAddress, connected = true, connecting = false)
         assertEquals(R.string.discovery_saved_neutral, saved)
-        assertNotEquals(
-            "the saved-address verdict must NOT reuse the discovery wording",
-            R.string.discovery_found,
-            saved,
-        )
         // The same holds for the string-level label policy.
         val label = discoveryLabel(DiscoveryState.ExistingAddress, true)
         assertFalse("'$label' must not claim an automatic discovery", label.contains("自动发现"))
         assertFalse("'$label' must not claim mDNS success", label.contains("mDNS"))
         // 1C-D-04@R6: the production chain normalises every verified run to Discovered,
         // so the UI cannot tell a fresh browse from a saved re-probe and must not claim
-        // one. Both verified states therefore map to the neutral wording; the R5 defect
-        // (Discovered -> "已自动发现电脑") is pinned by
-        // `RecordingReadySavedProbeWordingR6Test`.
-        assertEquals(R.string.discovery_saved_neutral, readyStatusTextRes(DiscoveryState.Discovered, true))
-        assertNotEquals(
-            "no verified state may claim an automatic discovery",
-            R.string.discovery_found,
-            readyStatusTextRes(DiscoveryState.Discovered, true),
+        // one. 1C-D-04@R7 removed the "已自动发现电脑" resource entirely (it had no
+        // production call site), so the claim is not expressible any more.
+        assertEquals(
+            R.string.discovery_saved_neutral,
+            readyStatusTextRes(DiscoveryState.Discovered, connected = true, connecting = false),
         )
-        assertNotEquals(
+        // 1C-D-04@R7 §2A: a round that is still checking must not reuse the previous
+        // authentication as if it were a live connection.
+        assertEquals(
+            R.string.discovery_searching,
+            readyStatusTextRes(DiscoveryState.Discovered, connected = true, connecting = true),
+        )
+        assertEquals(
             "an unverified Discovered state must not claim success",
-            R.string.discovery_found,
-            readyStatusTextRes(DiscoveryState.Discovered, hasVerifiedTarget = false),
+            R.string.discovery_awaiting,
+            readyStatusTextRes(DiscoveryState.Discovered, connected = false, connecting = false),
         )
     }
 
@@ -115,14 +113,22 @@ class RecordingReadyEntryR5Test {
             DiscoveryState.Discovered,
             DiscoveryState.ManualFallback,
         )) {
-            for (verified in listOf(false, true)) {
-                val res = readyStatusTextRes(state, verified)
-                assertNotEquals("state $state must have a label", 0, res)
+            for (connected in listOf(false, true)) {
+                for (connecting in listOf(false, true)) {
+                    val res = readyStatusTextRes(state, connected, connecting)
+                    assertNotEquals("state $state must have a label", 0, res)
+                }
             }
         }
         // Searching must not claim a result, and the fallback must name the action.
-        assertEquals(R.string.discovery_searching, readyStatusTextRes(DiscoveryState.Searching, false))
-        assertEquals(R.string.discovery_manual, readyStatusTextRes(DiscoveryState.ManualFallback, false))
+        assertEquals(
+            R.string.discovery_searching,
+            readyStatusTextRes(DiscoveryState.Searching, connected = false, connecting = false),
+        )
+        assertEquals(
+            R.string.discovery_manual,
+            readyStatusTextRes(DiscoveryState.ManualFallback, connected = false, connecting = false),
+        )
         assertFalse(
             "the fallback wording must not imply mDNS success",
             discoveryLabel(DiscoveryState.ManualFallback, false).contains("自动发现成功"),
@@ -227,14 +233,33 @@ class RecordingReadyEntryR5Test {
             "ready_entry_searching",
             "ready_open_config",
             "discovery_searching",
-            "discovery_found",
             "discovery_saved_neutral",
             "discovery_awaiting",
             "discovery_none_yet",
             "discovery_manual",
+            // 1C-D-04@R7 §2B: the switch page's current-computer line and short labels.
+            "switch_current_section",
+            "switch_current_computer",
+            "switch_other_computer",
+            "switch_dialog_hint",
+            "switch_search_again",
+            "switch_searching",
+            "discovery_current_missing",
+            "action_back",
         )) {
             assertTrue("missing string resource: $name", strings.contains("name=\"$name\""))
         }
+        // 1C-D-04@R7: the unreachable discovery claim was removed, so the Ready screen
+        // cannot render "已自动发现电脑" at all any more.
+        assertFalse(
+            "the removed discovery claim must stay removed",
+            strings.contains("name=\"discovery_found\""),
+        )
+        // The long fixed "all of these computers have been verified" paragraph is gone.
+        assertFalse(
+            "the fixed long verification paragraph must be removed",
+            strings.contains("以下电脑都已验证通过"),
+        )
         // The neutral saved-address wording must not contain the discovery claim.
         val neutral = strings.substringAfter("name=\"discovery_saved_neutral\">").substringBefore("<")
         assertFalse("neutral wording must not claim discovery: $neutral", neutral.contains("自动发现"))

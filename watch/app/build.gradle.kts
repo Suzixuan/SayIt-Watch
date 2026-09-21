@@ -10,9 +10,10 @@ android {
 
     defaultConfig {
         applicationId = "com.sayit.watch.debug"
-        // Development candidate, not a release.
-        versionCode = 5
-        versionName = "0.3.0-dev.1"
+        // Development candidate, not a release. 1C-D-04@R7: this connection-recovery and
+        // explicit-switch candidate is distinguished from the previous dev.1 build.
+        versionCode = 6
+        versionName = "0.3.0-dev.2"
         minSdk = 30
         targetSdk = 34
     }

@@ -35,7 +35,12 @@ server/mytestwav.txt
 # ── Client dev artifacts ──
 client/scripts/*
 !client/scripts/check-i18n.mjs
+# 1C-D-04@R7: the reproducible unified portable-package build script is source, not an
+# artifact — only its OUTPUT is ignored.
+!client/scripts/package-watch-portable.ps1
 client/dist/
+# 1C-D-04@R7 portable package output (ZIP + expanded staging), never committed
+dist-portable/
 # build.rs 从 transcribe-cpp 的构建产物拷进来的 DLL，纯生成物
 client/src-tauri/transcribe-libs/
 

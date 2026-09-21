@@ -282,16 +282,24 @@ class DiscoveryRegressionTest {
 
         // The user taps 切换电脑: the explicit browse must NOT consult the saved
         // priority, so the other computer becomes selectable without typing an IP.
+        // 1C-D-04@R7 必修 2: the browse only OFFERS what authenticated; it never adopts.
+        // The current computer is not re-probed inside the browse, so it stays in use.
+        val keep = DiscoverySelection("192.168.12.100", 18099)
         val runId = bridge.newSwitchRun()
         discovery.push(realService(ip = "192.168.12.142"))
         assertEquals(
             "the explicit switch must offer exactly the other computer",
-            DiscoverySelection("192.168.12.142", 18099),
+            listOf(DiscoverySelection("192.168.12.142", 18099)),
             bridge.onSwitchBrowse(runId),
         )
         assertEquals(
+            "the picker must offer the current computer plus the new one",
+            listOf(keep, DiscoverySelection("192.168.12.142", 18099)),
+            bridge.pickerCandidates,
+        )
+        assertEquals(
             "the current computer must still be in use until the picker confirms",
-            DiscoverySelection("192.168.12.100", 18099),
+            keep,
             bridge.verifiedTarget,
         )
         assertTrue(

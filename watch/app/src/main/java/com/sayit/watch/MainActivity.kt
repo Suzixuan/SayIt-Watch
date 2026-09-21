@@ -16,6 +16,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import com.sayit.watch.settings.SettingsStore
 import com.sayit.watch.ui.RecordingScreen
 import com.sayit.watch.ui.RecordingViewModel
@@ -43,6 +45,24 @@ class MainActivity : ComponentActivity() {
 
         // Bind the vibrator to the ViewModel (needs Context; ViewModel has none).
         viewModel.onVibrate = { pattern -> vibratePattern(this, pattern) }
+
+        // 1C-D-04@R7 §2A: the connection task owner follows the REAL foreground state.
+        // `onStop` cancels the round in flight and ends all scheduling, so nothing polls
+        // in the background; `onStart` revalidates the computer in use immediately (one
+        // bounded authenticated probe) and resumes the 5 s recovery search when none is
+        // usable. This is also what lets a PC started after the Watch be found without
+        // restarting the app — the old screen-effect scheduler only ran on page changes.
+        lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    viewModel.onForeground()
+                }
+
+                override fun onStop(owner: LifecycleOwner) {
+                    viewModel.onBackground()
+                }
+            },
+        )
 
         setContent {
             var hasPermission by remember {
