@@ -300,15 +300,22 @@ foreach ($noteName in @('README-PORTABLE.txt', 'BUILD-INFO.txt')) {
     }
 }
 $readmeText = [System.IO.File]::ReadAllText((Join-Path $stagingDir 'README-PORTABLE.txt'), [System.Text.Encoding]::UTF8)
+# ASCII-only requirements: Windows PowerShell 5.1 cannot be trusted to round-trip a non-ASCII
+# literal through a BOM-less read, and a wrong encoding must not be able to pass this gate.
 foreach ($required in @(
     $receiverConfigRelative,
-    '手表访问令牌',
     'frontendDist',
-    'SayIt.exe'
+    'SayIt.exe',
+    'watch-receiver.config.json',
+    'devToken'
 )) {
     if (-not $readmeText.Contains($required)) {
         Fail "README-PORTABLE.txt must mention $required"
     }
+}
+# The file must be valid UTF-8 (a garbled encoding would show up as a replacement character).
+if ($readmeText.Contains([char]0xFFFD)) {
+    Fail 'README-PORTABLE.txt was not written as clean UTF-8'
 }
 foreach ($forbidden in @('SayIt 设置', '服务器访问令牌')) {
     if ($readmeText.Contains($forbidden)) {
