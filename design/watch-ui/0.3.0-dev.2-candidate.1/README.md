@@ -49,7 +49,12 @@ Therefore the acceptance for this candidate is:
 
 `05-switch-not-connected.png` documents the wording rule that a stored address may **not**
 be presented as a live connection: with no usable target the current-computer line says
-`未连接`.
+`未连接`. `02-switch-not-found.png` shows the empty result case.
+
+The single-candidate rule (exactly ONE new computer is still only offered, never adopted) is
+asserted by `ConnectionRecoveryR7Test` and by `DiscoverySwitchFlowR3Test`; it is not a
+separate image, because its screen is identical to `01-switch-two-computers.png`'s candidate
+list — only the number of rows differs.
 
 No resource has been deployed and the Watch app is not installed by this freeze. Two-PC
 discovery/switching and the recording-to-text chain remain PM device-verification gates.

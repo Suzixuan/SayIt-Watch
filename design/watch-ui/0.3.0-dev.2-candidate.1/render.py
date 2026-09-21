@@ -129,16 +129,15 @@ def render_two_candidates():
     )
 
 
-def render_single_candidate():
-    """Exactly ONE new computer: it is still only OFFERED (R7 必修 2)."""
+def render_not_found():
+    """No candidate answered AND nothing is in use: the failure state must say so."""
     render(
-        "02-switch-single-candidate-offered.png",
-        address="192.168.12.142:18099",
-        hint="点选要使用的那一台",
-        hint_color=None,
-        rows=[("当前使用", "192.168.12.142:18099"), ("可选电脑", "192.168.12.153:18099")],
+        "02-switch-not-found.png",
+        address=None,
+        hint="未找到电脑",
+        hint_color=WARN,
+        rows=[],
         buttons=lambda draw, y: pill(draw, pill(draw, y, "重新搜索", ACCENT) + dp(8), "返回", CARD),
-        current_index=0,
     )
 
 
@@ -192,7 +191,7 @@ def render_ready_neutral():
 
 if __name__ == "__main__":
     render_two_candidates()
-    render_single_candidate()
+    render_not_found()
     render_searching()
     render_no_candidate()
     render_disconnected()
