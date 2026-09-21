@@ -1,4 +1,4 @@
-# 1C-D-04@R7 — unified portable Windows Debug test package
+﻿# 1C-D-04@R7 — unified portable Windows Debug test package
 #
 # One ZIP, one entry point, both PCs. Produces:
 #
@@ -313,8 +313,12 @@ foreach ($forbidden in @('SayIt 设置', '服务器访问令牌')) {
         Fail "README-PORTABLE.txt must not point at the non-existent destination $forbidden"
     }
 }
-if (-not ([System.IO.File]::ReadAllText((Join-Path $stagingDir 'BUILD-INFO.txt'))).Contains("git_head=$baselineCommit")) {
+$buildInfoText = [System.IO.File]::ReadAllText((Join-Path $stagingDir 'BUILD-INFO.txt'))
+if (-not $buildInfoText.Contains("git_head=$baselineCommit")) {
     Fail 'BUILD-INFO.txt must record the product commit it was built from'
+}
+if (-not $buildInfoText.Contains('frontend=embedded')) {
+    Fail 'BUILD-INFO.txt must record that the frontend is embedded'
 }
 
 # ── 6. ZIP ────────────────────────────────────────────────────────────────────
