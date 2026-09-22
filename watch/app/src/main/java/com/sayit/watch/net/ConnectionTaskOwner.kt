@@ -5,51 +5,49 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.atomic.AtomicLong
-
-/** Monotonic round identity: a late round cleanup must never clear a newer round's slot. */
-private val ROUND_IDS = AtomicLong(0)
 
 /**
- * 1C-D-04@R7/R8 — the single owner of "which connection task is running".
+ * 1C-D-04@R9 — the single, NON-BLOCKING, serialized owner of "which connection task is running".
  *
- * The user-visible regression this class fixes: with the Watch already on the Ready screen,
- * starting the PC afterwards did nothing. `RecordingScreen` only asked for a search when
- * `ui.screen` **changed**, so one failed first round left the screen with no scheduler and the
- * user had to kill the app and reopen it.
+ * R8 kept the scheduling in the caller's stack: every UI entry point (`requestSwitch`,
+ * `dismissSwitchPicker`, `onBackground`, the recording entry) called `joinBounded()`, which ran
+ * `runBlocking { withTimeoutOrNull(1_500) { job.join() } }` on the **UI thread**, and — after the
+ * timeout — started the replacement anyway. So the old round could still be alive while the new one
+ * opened a second listener, and the UI could freeze for 1.5 s. R9 replaces that with one command
+ * loop:
  *
- * R8 seals the lifecycle. The owner is one serialized loop with exactly two modes:
+ * | who | what they may do |
+ * |---|---|
+ * | any caller (UI thread included) | `commands.trySend(...)` — returns immediately, never blocks |
+ * | the command loop ([commandLoop]) | the ONLY writer of `current`, `pending` and `generation` |
+ * | a round coroutine | run its round and, by IDENTITY, clear its own slot when it finishes |
  *
- * | state | what runs | what must NOT happen |
- * |---|---|---|
- * | **connected** | one bounded authenticated probe of the current target every [healthCheckIntervalMs]; target and recording gate stay untouched between probes | no browse (`ServiceDiscovery.start()` stays 0), no full search, no target clearing |
- * | **searching** | one full resolution round, then wait [retryDelayMs] and repeat | rounds must not stack or overlap |
+ * Serialization and the cancel hand-off:
  *
- * Only a FAILED probe clears the usable state; a successful probe goes back to waiting, so an
- * idle connected Watch never loses its connection or its recording entry point.
+ * - a new intent first **cancels and JOINS** the round in flight — `cancelAndJoin()`, with no
+ *   timeout — and only then starts the replacement. Two browse/NSD listeners can therefore never
+ *   overlap, and a slow platform stop delays only this loop, never the UI;
+ * - a round that is superseded or cancelled can no longer touch anything: every result application
+ *   passes through the identity/lifecycle gate [isCurrent], and the rounds themselves no longer run
+ *   under `NonCancellable`, so a cancelled probe unwinds instead of writing a stale verdict;
+ * - a late `finally` from an old round cannot clear a newer round's slot, because it only clears
+ *   its own identity.
  *
- * Hand-off is serialized: a new intent cancels the round in flight, WAITS for it (bounded) and
- * only then starts the replacement, so the old browse/NSD session is really stopped before a
- * second listener can exist. The synchronous transport stop runs before any suspension point
- * in a round, so it is delivered even when the round is cancelled mid-flight.
- *
- * Everything is foreground-gated. [pauseForeground] ends probing as well as searching, and the
- * suspended loop cannot touch UI state, the target or the settings afterwards.
+ * The loop is one serialized state machine; the stable cadence is a `Tick` command it posts to
+ * itself when a round finishes, so "wait 5 s and probe again" can always be interrupted by a real
+ * user intent instead of running on its own thread.
  *
  * The owner schedules; it never decides policy. Authentication, target selection and the frozen
  * 3 s/8 s budgets stay in [DiscoveryCoordinator] / [ResolverBridge] — the injected callbacks are
- * the only things this class knows about.
+ * the only things this class knows about, and this file stays pure Kotlin with no Android
+ * dependency.
  *
  * Rounds run on their OWN scheduler instead of the caller's scope: `viewModelScope` is
- * `Dispatchers.Main`, where the multi-second waits would hold the UI thread, and a test
- * dispatcher would freeze the loop's virtual clock and stall it.
+ * `Dispatchers.Main`, where the multi-second waits would hold the UI thread.
  */
 class ConnectionTaskOwner(
     /**
@@ -76,9 +74,21 @@ class ConnectionTaskOwner(
     private val healthCheckIntervalMs: Long = DefaultHealthCheckIntervalMs,
     /**
      * Revalidates the computer in use with ONE bounded authenticated probe.
+     *
+     * It reports the answer and does nothing else: the OWNER decides whether that answer may still
+     * be applied (1C-D-04@R9 P0-A), so a probe that returns after its round was superseded or after
+     * the app went to the background is simply dropped.
+     *
      * @return true when it still answered.
      */
     private val probeCurrentTarget: suspend () -> Boolean,
+    /**
+     * Applies a FAILED health probe — clears the target, the UI and the discovery verdict.
+     *
+     * It is a separate callback because it is the one probe consequence that must be generation
+     * gated: the owner calls it only while this exact round is still the current, foreground one.
+     */
+    private val onProbeFailed: () -> Unit = {},
     /**
      * Releases an in-flight browse before a switch round WITHOUT dropping the computer in use
      * (1C-D-04@R7 必修 2 / R8 P0-A). Defaults to [cancelTransport] for callers that do not
@@ -89,18 +99,6 @@ class ConnectionTaskOwner(
     private val onStarted: () -> Unit = {},
     /** Reports that an intent round finished. */
     private val onFinished: () -> Unit = {},
-    /** Injectable clock; only the tests change it. */
-    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
-    /**
-     * Upper bound for waiting on a cancelled round during a hand-off or a stop.
-     *
-     * The transport teardown itself is synchronous and already runs before the cancelled round can
-     * suspend, so a healthy cancel returns in microseconds and this bound is only reached when a
-     * platform call is genuinely stuck. It is kept short because the callers include
-     * `Activity.onStop` and the recording entry point, where blocking the UI thread for seconds
-     * would be its own defect.
-     */
-    private val cancelJoinBudgetMs: Long = DefaultCancelJoinBudgetMs,
 ) {
 
     /**
@@ -124,15 +122,53 @@ class ConnectionTaskOwner(
     /** What the loop is doing right now. Address-free; safe to expose. */
     enum class RoundKind { IDLE_CONNECTED, SEARCH_KEEP, SEARCH, BROWSE }
 
-    private class Round {
-        /** Identity of this round; a late cleanup must not clear a NEWER round's slot. */
-        val id: Long = ROUND_IDS.incrementAndGet()
+    /**
+     * Everything the owner can be asked to do. Callers only ever `trySend` one of these; nothing
+     * about scheduling happens on the calling thread.
+     */
+    private sealed class Command {
+        /** The app came back to the foreground: revalidate immediately. */
+        object Foreground : Command()
 
-        @Volatile
-        var job: Job? = null
+        /** The app left the foreground: cancel the round and stop scheduling entirely. */
+        object Background : Command()
+
+        /** Cancel the round in flight and stop; the caller decides what comes next. */
+        object Stop : Command()
+
+        /** A user/UI intent, in arrival order. */
+        data class Intent(val intent: Pending) : Command()
+
+        /**
+         * The stable cadence elapsed for [generation].
+         *
+         * Carrying the generation is what makes a stale tick harmless: a tick that was already in
+         * flight when a newer round replaced this one is discarded instead of stacking work.
+         */
+        data class Tick(val generation: Long) : Command()
     }
 
-    private val lock = Any()
+    /**
+     * One round of work. [generation] identifies it; a round may only clear its OWN slot.
+     * [intent] is null for the idle health probe round, which has no user intent behind it.
+     */
+    private class Round(val generation: Long, val intent: Pending?) {
+        @Volatile
+        var job: Job? = null
+
+        /**
+         * Set the moment a caller asks for this round to stop.
+         *
+         * It is what makes "the task is over" immediately readable by the caller that asked for the
+         * stop (the recording entry, the Activity), while the actual join — the part that must not
+         * block a UI thread — is still performed by [commandLoop]. A superseded round is never
+         * joined twice: the command loop reads the same slot.
+         */
+        @Volatile
+        var superseded: Boolean = false
+    }
+
+    private val commands = Channel<Command>(Channel.UNLIMITED)
 
     /** Own scheduling scope: never the caller's (main or virtual-time) dispatcher. */
     private val scheduler = CoroutineScope(
@@ -142,8 +178,6 @@ class ConnectionTaskOwner(
     @Volatile
     private var foreground: Boolean = false
 
-    private var round: Round? = null
-
     /** The intent queued for the next round, or null. */
     @Volatile
     private var pending: Pending? = null
@@ -151,8 +185,30 @@ class ConnectionTaskOwner(
     @Volatile
     private var kind: RoundKind = RoundKind.IDLE_CONNECTED
 
-    /** True while a round is in flight. */
-    val isTaskRunning: Boolean get() = synchronized(lock) { round?.job?.isActive == true }
+    /** The round in flight, or null. Written by [commandLoop] and cleared by IDENTITY. */
+    @Volatile
+    private var current: Round? = null
+
+    /** The pending stable-cadence tick, cancelled as soon as any real command arrives. */
+    @Volatile
+    private var tickJob: Job? = null
+
+    /**
+     * Identity of the newest round. Bumped by [commandLoop] on every launch, so a `Tick` and a
+     * `finally` block from an older round are both recognisable as stale.
+     */
+    @Volatile
+    private var generation: Long = 0L
+
+    /**
+     * The single command loop. This is the only place that starts rounds, and it is what makes the
+     * hand-off serialized: it cancels and JOINS the previous round before launching the next one.
+     */
+    private val loopJob: Job = scheduler.launch { commandLoop() }
+
+    /** True while a round is in flight and not already asked to stop. */
+    val isTaskRunning: Boolean
+        get() = current?.let { !it.superseded && it.job?.isActive == true } == true
 
     /** True while the app is in the foreground and the owner may schedule. */
     val isForeground: Boolean get() = foreground
@@ -171,7 +227,7 @@ class ConnectionTaskOwner(
      */
     fun onForegroundChanged(inForeground: Boolean) {
         if (inForeground) {
-            revalidateNow()
+            resumeForeground()
         } else {
             pauseForeground()
         }
@@ -180,216 +236,274 @@ class ConnectionTaskOwner(
     /**
      * Foreground revalidation / explicit re-search entry point.
      *
-     * It runs ONE round that revalidates the computer in use when there is one (no browse, no
-     * "clearing" of the connection) and searches when there is none. A queued intent always wins.
+     * It queues ONE round that revalidates the computer in use when there is one (no browse, no
+     * "clearing" of the connection) and searches when there is none.
      */
     fun revalidateNow() {
         foreground = true
-        supersede(Pending.SEARCH_KEEP)
+        commands.trySend(Command.Foreground)
     }
 
     /** Suspends everything: cancels the round, stops the transport and ends probing. */
     fun pauseForeground() {
+        // The lifecycle flag is readable immediately (the UI must stop describing a live
+        // connection at once); the cancellation itself is serialized by the command loop, so this
+        // call never blocks the Activity that is stopping.
         foreground = false
-        stop()
+        pending = null
         kind = RoundKind.IDLE_CONNECTED
+        commands.trySend(Command.Background)
     }
 
     /** Resumes after [pauseForeground]; no-op when already in the foreground. */
     fun resumeForeground() {
         if (foreground) return
         foreground = true
-        supersede(Pending.SEARCH_KEEP)
+        commands.trySend(Command.Foreground)
     }
 
     /**
-     * Cancels the round in flight and runs [intent] as the next round. A later call always wins,
-     * so rapid taps collapse into the newest intent instead of stacking work.
+     * Queues [intent] as the next round. A later call always wins, so rapid taps collapse into the
+     * newest intent instead of stacking work, and the queued round waits for the previous one to
+     * be fully cancelled.
      */
     fun restartNow(intent: Pending) {
         if (!foreground) return
-        supersede(intent)
+        commands.trySend(Command.Intent(intent))
     }
 
     /**
-     * Expresses an intent: coalesces into the running round when it is already working, so
-     * re-entering the Ready screen is not "cancel and redo".
+     * Expresses an intent, coalescing it into the round already running when that round is working
+     * on exactly the same thing, so re-entering the Ready screen is not "cancel and redo".
      */
     fun requestRefresh(intent: Pending) {
         if (!foreground) return
-        synchronized(lock) {
-            if (round?.job?.isActive == true) {
-                pending = intent
-                return
-            }
-        }
-        supersede(intent)
+        val running = current
+        if (running != null && running.intent == intent && running.job?.isActive == true) return
+        commands.trySend(Command.Intent(intent))
     }
 
-    /** Cancels the round, stops the transport and ends all scheduling. */
+    /**
+     * Cancels the round in flight and stops scheduling. It does not touch the usable state: the
+     * caller (Config entry, transfer start, picker dismissal) decides what happens to the target.
+     *
+     * The cancellation is delivered by the command loop, so this returns immediately; a caller that
+     * needs the round to be over before it does something else must express that as a command
+     * rather than block on this.
+     */
     fun stop() {
-        val running = synchronized(lock) {
-            val current = round
-            round = null
-            pending = null
-            current
-        }
-        running?.job?.cancel()
-        // The round's synchronous transport stop runs before any suspension point, so it is
-        // delivered even though the job was cancelled. The bounded join below then guarantees
-        // the cancelled browse/NSD session is over before this returns.
-        joinBounded(running?.job)
+        pending = null
+        // Readable by the caller immediately ("the task is over"); the join itself is still
+        // serialized by the command loop so no UI thread ever waits for it.
+        current?.superseded = true
+        commands.trySend(Command.Stop)
     }
 
     /** Teardown: no scheduling survives the ViewModel. */
     fun onDestroyed() {
         foreground = false
-        stop()
+        pending = null
+        current?.superseded = true
+        commands.trySend(Command.Stop)
+        commands.close()
+    }
+
+    // ── the command loop (the only writer of scheduling state) ───────────────
+
+    private suspend fun commandLoop() {
+        for (command in commands) {
+            // Any real command invalidates the stable cadence; a Tick re-checks its own
+            // generation anyway, so losing this race can never stack work.
+            cancelTick()
+            when (command) {
+                is Command.Foreground -> {
+                    foreground = true
+                    startRound(Pending.SEARCH_KEEP)
+                }
+
+                is Command.Background -> {
+                    foreground = false
+                    pending = null
+                    kind = RoundKind.IDLE_CONNECTED
+                    cancelAndJoinCurrent()
+                }
+
+                is Command.Stop -> {
+                    pending = null
+                    cancelAndJoinCurrent()
+                }
+
+                is Command.Intent -> {
+                    if (!foreground) continue
+                    startRound(command.intent)
+                }
+
+                is Command.Tick -> {
+                    if (!foreground) continue
+                    if (command.generation != generation) continue
+                    if (current != null) continue
+                    val queued = pending
+                    pending = null
+                    when {
+                        // A real intent always beats the cadence.
+                        queued != null -> startRound(queued)
+                        isConnected() -> startRound(null)
+                        else -> startRound(Pending.SEARCH)
+                    }
+                }
+            }
+        }
     }
 
     /**
-     * Replaces the round: the old one is cancelled and JOINED first, then a new round for [intent]
-     * starts. Because the hand-off waits, the old browse/NSD session is fully stopped before the
-     * replacement opens a listener, so two listeners can never overlap.
-     *
-     * The old round is also detached by IDENTITY, so a cancelled round that is still unwinding
-     * cannot clear the slot of the round that replaced it (which would leave the owner with no
-     * round at all and silently drop the user's newest intent).
+     * Cancels and JOINS the round in flight. The join is deliberately unbounded: a platform stop
+     * that takes longer than any fixed budget still has to finish before a replacement may open a
+     * second listener. This runs on the owner's own dispatcher, so the wait blocks nothing the user
+     * can see — which is exactly the R8 defect this replaces.
      */
-    private fun supersede(intent: Pending) {
-        if (!foreground) return
-        val previous = synchronized(lock) {
-            val current = round
-            round = null
-            pending = null
-            current
-        }
-        previous?.job?.cancel()
-        joinBounded(previous?.job)
-        launch(intent)
+    private suspend fun cancelAndJoinCurrent() {
+        val round = current
+        current = null
+        val job = round?.job ?: return
+        job.cancel()
+        job.join()
     }
 
-    /** Starts one round for [intent] and registers it before it can run. */
-    private fun launch(intent: Pending) {
-        val placeholder = Round()
-        synchronized(lock) {
-            if (!foreground) return
-            round = placeholder
-            kind = kindOf(intent)
-        }
-        val job = scheduler.launch(start = CoroutineStart.LAZY) { run(intent, placeholder) }
-        placeholder.job = job
+    /** Cancels the round in flight, then launches the next one for [intent] (null = health probe). */
+    private suspend fun startRound(intent: Pending?) {
+        cancelAndJoinCurrent()
+        if (!foreground) return
+        launchRound(intent)
+    }
+
+    /**
+     * Registers the round BEFORE it can run, so an intent that arrives immediately afterwards
+     * always finds (and cancels) it.
+     */
+    private fun launchRound(intent: Pending?) {
+        val round = Round(++generation, intent)
+        current = round
+        kind = if (intent == null) RoundKind.IDLE_CONNECTED else kindOf(intent)
+        val job = scheduler.launch(start = CoroutineStart.LAZY) { runRound(round, intent) }
+        round.job = job
         job.start()
     }
 
-    /** Bounded wait for a cancelled round; never throws and never blocks the caller for long. */
-    private fun joinBounded(job: Job?) {
-        if (job == null || job.isCompleted) return
-        try {
-            runBlocking { withTimeoutOrNull(cancelJoinBudgetMs) { job.join() } }
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-        } catch (_: Throwable) {
-            // A join must never be able to break the caller's hand-off.
+    private fun cancelTick() {
+        tickJob?.cancel()
+        tickJob = null
+    }
+
+    /**
+     * Posts the stable cadence back to the command loop. A round that finishes while a newer round
+     * already replaced it does not post at all (see [finishRound]).
+     */
+    private fun scheduleTick(generationOfRound: Long, delayMs: Long) {
+        cancelTick()
+        tickJob = scheduler.launch {
+            if (delayMs > 0L) delay(delayMs)
+            commands.trySend(Command.Tick(generationOfRound))
         }
     }
 
-    /** Consumes the queued intent, if any. */
-    private fun takePending(): Pending? = synchronized(lock) { pending.also { pending = null } }
+    // ── rounds ───────────────────────────────────────────────────────────────
+
+    /**
+     * The identity/lifecycle gate every result application passes through (1C-D-04@R9 P0-A).
+     *
+     * A blocking platform call can return long after its coroutine was cancelled; the coroutine
+     * itself unwinds on the next suspension check, and this gate is the second line of defence: a
+     * consequence may only be applied while this exact round is still the current, foreground one.
+     */
+    private fun isCurrent(round: Round): Boolean = foreground && current === round
+
+    /** One round, always ending with its own identity-checked cleanup. */
+    private suspend fun runRound(round: Round, intent: Pending?) {
+        onStarted()
+        try {
+            if (intent == null) {
+                runHealthRound(round)
+            } else {
+                runIntentRound(round, intent)
+            }
+        } finally {
+            onFinished()
+            finishRound(round)
+        }
+    }
+
+    /**
+     * The idle health round: ONE bounded authenticated probe of the computer in use, and nothing
+     * else. It never browses, never searches and never drops the target while the probe succeeds.
+     *
+     * R9 removed the `withContext(NonCancellable)` that used to wrap this call. The probe is now
+     * cancellable, and every consequence below is gated on this round still being current, so a
+     * probe that comes back after `onBackground()` cannot clear the target or refresh the UI.
+     */
+    private suspend fun runHealthRound(round: Round) {
+        if (!isCurrent(round)) return
+        val stillUp = probeCurrentTarget()
+        if (!isCurrent(round)) return
+        if (stillUp) return
+        // Only a FAILED probe may drop the usable state, and only while this round still owns it.
+        onProbeFailed()
+        if (!isCurrent(round)) return
+        cancelTransport()
+        if (!isCurrent(round)) return
+        resolveNow(true)
+    }
+
+    /**
+     * One intent round.
+     *
+     * [Pending.SEARCH_KEEP] revalidates what is in use without dropping it first; [Pending.SEARCH]
+     * starts from scratch, so any previous usable state is dropped; [Pending.BROWSE] releases the
+     * live browse without touching the target.
+     *
+     * [cancelTransport] / [cancelForRefresh] are synchronous and run BEFORE the first suspension
+     * point, which is what keeps them delivered when a hand-off cancels this round mid-flight.
+     */
+    private suspend fun runIntentRound(round: Round, intent: Pending) {
+        if (!isCurrent(round)) return
+        when (intent) {
+            Pending.SEARCH_KEEP -> resolveNow(false)
+            Pending.SEARCH -> {
+                cancelTransport()
+                if (!isCurrent(round)) return
+                resolveNow(true)
+            }
+            Pending.BROWSE -> {
+                cancelForRefresh()
+                if (!isCurrent(round)) return
+                browseForPicker()
+            }
+        }
+    }
+
+    /**
+     * Clears this round's own slot and re-arms the stable cadence.
+     *
+     * The identity check is the R8 lesson kept intact: a cancelled round that is still unwinding
+     * must not clear the slot of the round that replaced it (which would leave the owner with no
+     * round at all and silently drop the user's newest intent).
+     */
+    private fun finishRound(round: Round) {
+        if (current !== round) return
+        current = null
+        if (!foreground) return
+        if (isConnected()) kind = RoundKind.IDLE_CONNECTED
+        val waitMs = when {
+            pending != null -> 0L
+            isConnected() -> healthCheckIntervalMs
+            else -> retryDelayMs
+        }
+        scheduleTick(round.generation, waitMs)
+    }
 
     private fun kindOf(intent: Pending): RoundKind = when (intent) {
         Pending.SEARCH_KEEP -> RoundKind.SEARCH_KEEP
         Pending.SEARCH -> RoundKind.SEARCH
         Pending.BROWSE -> RoundKind.BROWSE
-    }
-
-    /** One entry into the loop: run the round, then keep the loop alive until it must end. */
-    private suspend fun run(intent: Pending, self: Round) {
-        try {
-            runRound(intent)
-            loop()
-        } finally {
-            synchronized(lock) {
-                if (round?.id == self.id) round = null
-            }
-        }
-    }
-
-    /**
-     * The owner loop.
-     *
-     * While disconnected it waits [retryDelayMs] and searches again (a PC that comes up later is
-     * found without restarting the app). While connected it probes the current target once per
-     * [healthCheckIntervalMs] and leaves everything else alone; only a FAILED probe drops the
-     * target and starts one recovery search.
-     */
-    private suspend fun loop() {
-        while (foreground) {
-            if (isConnected()) {
-                // Between probes the Watch is simply connected: no round, no "connecting".
-                synchronized(lock) { kind = RoundKind.IDLE_CONNECTED }
-                if (!waitInterval(healthCheckIntervalMs)) return
-                if (!foreground) return
-                val queued = takePending()
-                if (queued != null) {
-                    runRound(queued)
-                    continue
-                }
-                val stillUp = withContext(NonCancellable) { probeCurrentTarget() }
-                if (!foreground) return
-                if (stillUp) continue
-                // A failed probe enters ONE recovery round (re-probe, then browse).
-                runRound(Pending.SEARCH)
-            } else {
-                if (!waitInterval(retryDelayMs)) return
-                runRound(Pending.SEARCH)
-            }
-        }
-    }
-
-    /**
-     * Runs one round to completion INSIDE the loop, so exactly one coroutine is ever responsible
-     * for scheduling and two loops cannot coexist.
-     *
-     * [cancelTransport] / [cancelForRefresh] are synchronous and run BEFORE the first suspension
-     * point, which is what keeps them delivered when a hand-off cancels this round mid-flight.
-     */
-    private suspend fun runRound(intent: Pending) {
-        synchronized(lock) {
-            if (!foreground) return
-            kind = kindOf(intent)
-        }
-        onStarted()
-        try {
-            when (intent) {
-                // Revalidate what is in use. The target is NOT dropped first: the round only
-                // reports whether it still answers, so a healthy connection and its recording
-                // gate survive the round untouched.
-                Pending.SEARCH_KEEP -> resolveNow(false)
-                // A full resolution starts from scratch, so any previous usable state is dropped.
-                Pending.SEARCH -> {
-                    cancelTransport()
-                    resolveNow(true)
-                }
-                Pending.BROWSE -> {
-                    cancelForRefresh()
-                    browseForPicker()
-                }
-            }
-        } finally {
-            onFinished()
-        }
-    }
-
-    /** @return false when scheduling must end (background/teardown). */
-    private suspend fun waitInterval(millis: Long): Boolean {
-        val until = nowMs() + millis
-        while (foreground && pending == null) {
-            val left = until - nowMs()
-            if (left <= 0L) break
-            delay(left)
-        }
-        return foreground
     }
 
     companion object {
@@ -401,8 +515,5 @@ class ConnectionTaskOwner(
 
         /** 1C-D-04@R7 §2A: idle revalidation cadence for the computer in use. */
         const val DefaultHealthCheckIntervalMs: Long = 5_000L
-
-        /** How long a hand-off waits for the cancelled round before continuing anyway. */
-        const val DefaultCancelJoinBudgetMs: Long = 1_500L
     }
 }

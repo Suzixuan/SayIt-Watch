@@ -563,70 +563,13 @@ class ConnectionLifecycleR8Test {
         }
     }
 
-    // ── P1: the portable package notes must be executable, not decorative ─────
-
-    @Test
-    fun `the portable notes name the real config path and contain no control characters`() {
-        // The packaging script GENERATES README-PORTABLE.txt. Reading the template here keeps the
-        // wording honest even before the package is built: the real config path must be named, the
-        // non-existent settings entry must not be, and the frontend note must not rely on a
-        // backtick escape (which is how a form feed once reached the shipped README).
-        val script = File("../../client/scripts/package-watch-portable.ps1")
-        assertTrue(
-            "the packaging script must exist for the notes to be generated: ${script.absolutePath}",
-            script.isFile,
-        )
-        val source = script.readText()
-        assertTrue(
-            "the notes must name the receiver configuration file",
-            source.contains("%LOCALAPPDATA%\\com.sayit.app\\watch-receiver.config.json"),
-        )
-        assertTrue(
-            "the notes must explain that the token is brought over by the user",
-            source.contains("手表访问令牌"),
-        )
-        // The script may MENTION the non-existent entry (it documents the check it performs), but
-        // the note text it ships must not send the user there. Assert on the generated template.
-        val templateMarker = "\$buildInfoTemplate = @"
-        val template = source.substringAfter(templateMarker).substringBefore("\n'@")
-        assertTrue("the notes template must exist", template.length > 200)
-        assertFalse(
-            "the shipped notes must not point at a settings entry that does not exist",
-            template.contains("SayIt 设置"),
-        )
-        assertFalse(
-            "the shipped notes must not advertise an unrelated token field",
-            template.contains("服务器访问令牌"),
-        )
-        assertTrue(
-            "the notes must still explain that the frontend is embedded",
-            template.contains("frontendDist"),
-        )
-        assertFalse(
-            "the template must not use a backtick escape (that is how a form feed was shipped)",
-            template.contains('`'),
-        )
-        assertTrue(
-            "the notes must be written from a single-quoted here-string so nothing is interpreted",
-            source.contains("@'"),
-        )
-        assertTrue(
-            "the script must verify the generated notes for control characters",
-            source.contains("control character"),
-        )
-        assertTrue(
-            "BUILD-INFO must record the product commit",
-            source.contains("git_head="),
-        )
-        assertTrue(
-            "the package must be built from a clean, committed product head",
-            source.contains("uncommitted changes"),
-        )
-        assertTrue(
-            "the script must still refuse to ship a binary without the embedded frontend",
-            source.contains("tauri build --debug --no-bundle"),
-        )
-    }
+    // ── P1: the receiver's missing-config notice must name the real path ─────
+    //
+    // 1C-D-04@R9: the GENERATED README notes are no longer asserted here. R8 read the packaging
+    // script's source text and asserted a Chinese phrase that the shipped English notes never
+    // contained, which is why the R8 delivery head was red. `ConnectionLifecycleR9Test` now runs
+    // the real script and asserts on the file it writes; this file keeps only the receiver message,
+    // which is a source constant rather than a generated artefact.
 
     @Test
     fun `the receiver's missing-config notice names the real path and adds no fake entry`() {

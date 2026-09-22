@@ -494,7 +494,14 @@ class RecordingViewModel(
             coordinator?.stopBrowseOnly()
         },
         isConnected = { resolver.hasVerifiedTarget },
-        probeCurrentTarget = { revalidateCurrentTarget() },
+        /**
+         * 1C-D-04@R9 P0-A: the probe itself is pure — it reports the answer and nothing else. The
+         * OWNER decides whether that answer may still be applied, so a probe that returns after its
+         * round was superseded, or after the app went to the background, is dropped instead of
+         * clearing the target, the UI or the recording gate.
+         */
+        probeCurrentTarget = { probeVerifiedTarget() },
+        onProbeFailed = { onHealthProbeFailed() },
         onStarted = { ownerRoundStarted() },
         onFinished = { ownerRoundFinished() },
         retryDelayMs = retryDelayMs,
@@ -785,13 +792,16 @@ class RecordingViewModel(
         val found = try {
             resolver.handleSwitchBrowse(browseRunId)
         } finally {
-            // The picker must never stay in "searching" — not even when the round was
-            // cancelled by a newer intent.
-            withContext(kotlinx.coroutines.NonCancellable) {
-                uiEvent { it.switchSearching(false) }
+            // The picker must never stay in "searching" — not even when the round was cancelled by
+            // a newer intent. 1C-D-04@R9: no NonCancellable wraps a cancelled round's
+            // consequences, and the candidate refresh is generation-gated, so a browse that was
+            // superseded cannot publish a list the newer round never produced. Closing the
+            // "searching" flag is idempotent bookkeeping for state this same round opened.
+            if (resolver.isCurrentSwitchRun(browseRunId)) {
                 refreshStageTrail()
                 publishTargets()
             }
+            uiEvent { it.switchSearching(false) }
         }
         if (!resolver.isCurrentSwitchRun(browseRunId)) return
         _discovery.value =
@@ -948,20 +958,35 @@ class RecordingViewModel(
      *
      * @return true while the target is still authenticated.
      */
-    private suspend fun revalidateCurrentTarget(): Boolean {
+    private suspend fun probeVerifiedTarget(): Boolean {
         val current = verifiedDestination ?: return false
         val coordinatorLocal = coordinator ?: return false
         val ok = coordinatorLocal.probeCandidate(current)
-        if (!ok) {
-            resolver.onTargetInvalidated()
-            coordinatorLocal.invalidate()
-            setVerifiedDestination(null)
-            _discovery.value = DiscoveryState.ManualFallback
-            uiEvent(WatchUiStateMachine::connectionCleared)
-        } else {
-            uiEvent(WatchUiStateMachine::connectionRoundFinished)
-        }
+        if (ok) uiEvent(WatchUiStateMachine::connectionRoundFinished)
         return ok
+    }
+
+    /**
+     * 1C-D-04@R9 P0-A — applies a FAILED health probe.
+     *
+     * This is the consequence that must never run late: clearing the target, the UI and the
+     * recording gate from a superseded round is exactly what R8's `NonCancellable` probe did. The
+     * owner calls it only while that exact round is still the current, foreground one, and a probe
+     * cancelled by `onBackground()` unwinds before it ever gets here.
+     */
+    private fun onHealthProbeFailed() {
+        resolver.onTargetInvalidated()
+        coordinator?.invalidate()
+        setVerifiedDestination(null)
+        _discovery.value = DiscoveryState.ManualFallback
+        uiEvent(WatchUiStateMachine::connectionCleared)
+    }
+
+    /** Revalidate-then-recover: the SEARCH_KEEP round's own probe, failure included. */
+    private suspend fun revalidateCurrentTarget(): Boolean {
+        if (probeVerifiedTarget()) return true
+        onHealthProbeFailed()
+        return false
     }
 
     /**
