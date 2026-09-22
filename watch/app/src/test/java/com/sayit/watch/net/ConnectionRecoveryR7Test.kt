@@ -420,7 +420,15 @@ class ConnectionRecoveryR7Test {
         // Exactly ONE new computer answers the explicit switch browse.
         h.discovery.candidates = listOf(realService(desktop.ip), realService(laptop.ip))
         h.probe.reachable = setOf("${desktop.ip}:${desktop.port}", "${laptop.ip}:${laptop.port}")
+        val startsBefore = h.discovery.startCount.get()
         h.viewModel.requestSwitch()
+        // 1C-D-04@R9: the owner starts the round on its OWN dispatcher, so "not searching yet" is
+        // not "finished". Wait for the browse to really open before waiting for it to settle,
+        // otherwise this returns in the gap before the round is scheduled and asserts on a picker
+        // that was never refreshed.
+        waitUntil("the browse must open", timeoutMs = 15_000L) {
+            h.coordinator.isRunning || h.discovery.startCount.get() > startsBefore
+        }
         waitUntil("the browse must finish", timeoutMs = 15_000L) {
             !h.viewModel.ui.value.switchSearching && !h.coordinator.isRunning
         }

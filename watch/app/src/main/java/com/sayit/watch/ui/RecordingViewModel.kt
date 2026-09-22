@@ -1041,6 +1041,10 @@ class RecordingViewModel(
      */
     internal fun pauseConnectionTaskForTest() {
         stopConnectionTask()
+        // 1C-D-04@R9: the production stop is asynchronous on purpose — the UI must never wait for a
+        // platform teardown — so a test that is about to MEASURE the paused state waits for the
+        // previous round to be really over here instead of racing it.
+        taskOwner.awaitRoundSettledForTest()
     }
 
     /**

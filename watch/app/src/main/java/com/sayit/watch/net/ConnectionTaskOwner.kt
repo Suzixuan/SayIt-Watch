@@ -330,6 +330,13 @@ class ConnectionTaskOwner(
 
                 is Command.Stop -> {
                     pending = null
+                    // Invalidate the cadence too. A tick that was already inside the channel when
+                    // the stop was queued would otherwise be handled AFTER it and restart the loop
+                    // — a "paused" scheduler that keeps probing once per period, which is exactly
+                    // what a transfer pause must not do. Bumping the generation retires every tick
+                    // that any round posted, including one posted while this stop was being
+                    // processed.
+                    generation++
                     cancelAndJoinCurrent()
                 }
 
@@ -362,11 +369,29 @@ class ConnectionTaskOwner(
      * can see — which is exactly the R8 defect this replaces.
      */
     private suspend fun cancelAndJoinCurrent() {
-        val round = current
-        current = null
-        val job = round?.job ?: return
-        job.cancel()
-        job.join()
+        val round = current ?: return
+        val job = round.job
+        job?.cancel()
+        job?.join()
+        // The slot is cleared only AFTER the round has really finished, so "no round is running" is
+        // observable truthfully by [awaitRoundSettledForTest] instead of reporting a round that is
+        // still unwinding as already gone.
+        if (current === round) current = null
+    }
+
+    /**
+     * TEST SEAM — blocks (bounded) until no round is running.
+     *
+     * Nothing on a production path may call this: the whole point of R9 is that the UI entries
+     * return immediately. A test that is about to MEASURE a paused scheduler, however, needs the
+     * previous round to be really over, and the asynchronous stop deliberately does not promise
+     * that at the moment `stop()` returns.
+     */
+    fun awaitRoundSettledForTest(timeoutMs: Long = 5_000L) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline && current != null) {
+            Thread.sleep(5L)
+        }
     }
 
     /** Cancels the round in flight, then launches the next one for [intent] (null = health probe). */
