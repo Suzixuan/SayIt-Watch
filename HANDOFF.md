@@ -1,6 +1,13 @@
 # SayIt Watch Transport handoff
 
-## R7 PM 验收 NO-GO；当前返修 1C-D-04@R8（2026-09-20，已发送，D 返修中）
+## R8 PM 验收 NO-GO；当前返修 1C-D-04@R9（2026-09-22，待发送）
+
+- D 的 R8 交付头 `8149d34c9aeb69b63806ab183b0a2615f9f274b8`，工作树干净，范围为 8 个产品/测试/脚本路径和回传文档。便携 ZIP `12CCD863D787A902A803C55A56117B3E49BE5C65CD78A45987F5EA3945CDBCC2` 独立解压后 28 条 SHA256SUMS 全部一致；包内 EXE `FAF1F984E53910F43E613B9A28B2224E3F009882DA8C000E387FFE0CF4B6542E`，`BUILD-INFO.git_head=50c1e52`，说明控制字符 0。该静态包证据通过，但未启动、未安装、未替换用户软件。
+- PM 独立全量 Watch 在最终头失败：`ConnectionLifecycleR8Test` 要求“手表访问令牌”，最终脚本只有英文 `watch access token`；D 的 221/221 证据早于后续三个打包脚本修正，不能代表交付头。Rust 仍被既有 `transcribe-cpp-sys` FTK1011 缓存错误阻断。
+- 源码继续阻断：健康探针仍在 `NonCancellable` 中，真实最长 3 秒而取消只等 1.5 秒；后台/替代意图返回后旧探针仍能修改目标/UI。`joinBounded()` 还在 UI 路径 `runBlocking`，超时后照常启动新 Job，不满足真正 cancel-and-join。切换后“跨多个健康周期”测试实际 60 秒周期只等待 700 ms，也未覆盖要求。
+- 同范围 R9 包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R9.md`。冻结为非阻塞单 actor/command owner、可取消/代际隔离探针、慢取消真实回归和最终产品 SHA 证据。当前待发送，阶段 10/12 仍未通过。
+
+## R7 PM 验收 NO-GO；返修 1C-D-04@R8（2026-09-20，已发送；2026-09-22 交付后失败）
 
 - D 的 R7 交付头 `89cedd04bda3609e2286c92172fafbc896d640b8`，工作树干净。PM 独立复跑 Watch：210/210、lint、Debug build 退出码 0；APK SHA-256 `94833AE084EB29845B5554ACD1E79D922F59381D4C490BC78FDDA1D0F141E717`。统一 ZIP SHA-256 `86A37BF63F1BDF8CEC542CC82DE5278454F97BFA43C5DE060E1CE47D8A4294F5`，从 ZIP 独立解压得到 EXE `F12D28C90A8DA62BB03CFE53127186B20AB3F87295F1E404A7C3D889F334AB92`，28 条 SHA256SUMS 全部一致。Rust 新编译受本机既有 transcribe CMake 缓存失败阻断；D 报告的 live-multicast 用例亦未通过。
 - 源码阻断：切换开始使用 `resolver.onTargetInvalidated()`，在 Resolver 内清掉当前目标，造成 Resolver 与 UI 目标分裂；已连接健康探针结束后固定进入完整 SEARCH，每周期再次清目标；取消 picker、cancel-and-join、后台探针和上传后前台状态亦未封闭。便携包 MissingConfig 提示指向不存在的 Watch Token 设置，README 还有控制字符，BUILD-INFO 记录的是产品提交前的 `d32821c`。因此不安装 R7 APK、不替换桌面软件，R7 核心验收失败。
