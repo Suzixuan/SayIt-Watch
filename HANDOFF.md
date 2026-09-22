@@ -1,5 +1,13 @@
 # SayIt Watch Transport handoff
 
+## R9 PM 源码/构建验收 GO；等待真机与双电脑 A-H（2026-09-22）
+
+- D 的 R9 最终产品提交为 `e33b5361c3517f35d75bf210bfc1077d4f730658`，回传提交为 `0839b38`，工作树干净。相对 R8 基线仅改 2 个 Watch 产品文件、3 个 Watch 测试文件、1 个便携脚本以及 R9 任务/回传文档；未改 mDNS 协议、ASR、History、Paste、录音、正式 Release 或视觉布局。
+- PM 源码增量审核确认：`NonCancellable`、`runBlocking` 和 1.5 秒超时后并发启动均已移除；连接任务由非阻塞命令队列串行交接，旧回合完成取消/等待后才启动替代回合；健康探针失败后果由当前回合和前台状态门控。R9 的后台探针、阻塞探针换机、2 秒慢停止、取消后两个真实健康周期与实际说明产物用例均存在于真实 ViewModel→Owner→Resolver→Coordinator 链。`pending` 仍是未实际承载意图的可见字段，调度器注释对“唯一写入者”的表述也比实现更绝对；本轮作为非阻断清理项记录，不影响上述核心串行门槛。
+- PM 在最终头独立执行 `gradlew.bat testDebugUnitTest --rerun-tasks lintDebug assembleDebug --console=plain`，退出码 0：24 suites / **227 tests / 0 failures / 0 errors / 0 skipped**，lint **0 error / 37 warnings**，Debug APK SHA-256 `DAF765735C9A6EFF6D699608523FA8F2F902CCCCD1429C7E81C826A33045E318`，与回传一致。`cargo test watch_receiver` 仍在 PM 主机的既有 `transcribe-cpp-sys` CMake/MSBuild 缓存处以 `FTK1011` 退出 1，未进入 Rust 测试；D 的 62/62 只保留为执行者证据。
+- 统一 ZIP `F3487B7385C0FA8637332C5BCCEA2A1F5EB08318A80B8B0905736022093749EE` 经 PM 独立解压，28 条 `SHA256SUMS` 全部一致，包内 EXE `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`，`BUILD-INFO.git_head=e33b536`，说明控制字符 0。该结论是静态包验收，不是启动验收。
+- **分层结论：R9 源码/自动化/静态便携包 GO，可以进入设备验收；阶段 10 正式 Release 与阶段 12 双电脑端到端均未关闭。** 本轮检查时 ADB 列表为空，且本机 `0.0.0.0:18099` 仍由 `C:\SayItApp\SayIt-0.1.9.exe --minimized` 占用；PM 未停止现用进程、未安装 APK、未替换电脑软件。下一步需手表无线调试在线，并由用户允许切换现用电脑进程后，使用同一 R9 便携包按 A-H 验收。
+
 ## R8 PM 验收 NO-GO；当前返修 1C-D-04@R9（2026-09-22，待发送）
 
 - D 的 R8 交付头 `8149d34c9aeb69b63806ab183b0a2615f9f274b8`，工作树干净，范围为 8 个产品/测试/脚本路径和回传文档。便携 ZIP `12CCD863D787A902A803C55A56117B3E49BE5C65CD78A45987F5EA3945CDBCC2` 独立解压后 28 条 SHA256SUMS 全部一致；包内 EXE `FAF1F984E53910F43E613B9A28B2224E3F009882DA8C000E387FFE0CF4B6542E`，`BUILD-INFO.git_head=50c1e52`，说明控制字符 0。该静态包证据通过，但未启动、未安装、未替换用户软件。

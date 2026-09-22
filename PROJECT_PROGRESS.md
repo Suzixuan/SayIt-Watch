@@ -1,6 +1,6 @@
 # SayIt Watch Transport project progress
 
-当前工作：`1C-D-04@R8` PM 验收 NO-GO。最终交付头的 Watch 全量测试实际失败；健康探针仍不可取消，UI 路径仍用 `runBlocking` 有界等待并在超时后并发启动新任务。`1C-D-04@R9` 窄返修包已准备，待发送；权威状态见 HANDOFF.md 顶部。
+当前工作：`1C-D-04@R9` 已通过 PM 源码、Watch 全量与统一便携包静态验收，最终产品头 `e33b536`；227/227、lint 0 error、APK/ZIP/EXE 哈希与包内提交均独立核对。Rust 在 PM 主机仍受既有 FTK1011 环境错误阻断。ADB 当前无设备，现用 18099 进程未停止，因此 R9 尚未安装/启动，双电脑 A-H 仍待真机验收；权威状态见 HANDOFF.md 顶部。
 
 当前工作：用户批准 `1C-D-04@R7`，PM 任务包提交 `371ddc3`，已发送到 D 原对话并核对消息入列及生成状态。D 在 `codex/watch-connection-r7` 开发；前台连接恢复、显式选择、当前 IP 与统一自包含便携包均待交付和独立验收。当前唯一任务版本与派发证据见 `HANDOFF.md` 顶部。
 
@@ -33,11 +33,11 @@ Delivery 1C Repair 1 (D, 2026-09-15, contract `docs/DELIVERY-1C-D-REPAIR-1.md`):
 | Experience | 7B | dev.3 minimalist Watch UI | ☑ | 🟢 PM accepted | Colleague D | Commit `516cde9`; Config/Ready/Recording only, silent one-shot upload, real-device screenshots and one real Watch→ASR→Paste closure |
 | Acceptance | 8 | Ten consecutive real end-to-end runs | ☐ | ⚪ Deferred to normal use | User | User will accumulate consecutive real-use evidence and Stop→Paste latency during normal use; no dedicated test session now |
 | Security | 9 | Repository and runtime security hardening | ☐ | 🔵 PM re-review — repair required | PM | `83056ab` + `a7ddcac` are on `main`; CodeQL succeeds and GitHub protections are enabled. Remaining blockers: zero-token loopback behavior conflicts with the documented local default; diagnostics `timeline.json` still derives titles from raw logs and can retain transcript text; wildcard Watch bind remains an unresolved product/security exception. |
-| Packaging | 10 | Self-contained silent Windows portable build and Release | ☐ | 🔵 R9 返修待发送；正式 Release 仍待执行 | Colleague D | R8 ZIP 静态完整性与说明通过，但最终头全量测试失败且未启动。R9 要求同一最终产品 SHA 上重跑测试并重建统一 ZIP；不能以测试包关闭正式 Release。 |
+| Packaging | 10 | Self-contained silent Windows portable build and Release | ☐ | 🔵 R9 静态包 GO；启动验收/正式 Release 未完成 | Colleague D | R9 最终产品头 `e33b536`；PM 独立复跑 227/227，lint 0 error，ZIP 28 条哈希全对，包内 `git_head` 与 EXE 哈希正确。未停止现用 18099 进程，未启动新包；测试包不关闭正式 Release。 |
 | Experience | 11 | Optional Wear OS Tile card | ☐ | ⚪ Deferred | Colleague D | Initial Tiles 1.2/1.4 implementation did not compile and was reverted; current tree is clean and contains no Tile feature. This is outside the core verified flow. |
-| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔵 R9 返修待发送 | Colleague D | R8 保目标/健康循环有进展，但后台探针仍不可取消，取消超时后仍可并发且阻塞 UI；最终头测试失败。R9 限域收敛单一异步调度后再做真机和双电脑验收。见 HANDOFF.md。 |
+| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔵 R9 源码 GO；真机/双电脑 A-H 待验 | Colleague D, PM | R9 已移除不可取消探针与 UI `runBlocking`，单一非阻塞交接及慢停止/背景探针回归测试通过；PM 227/227。未安装 R9 APK，未用同一便携包做台式机↔笔记本发现、选择、录音→文本框。见 HANDOFF.md 顶部。 |
 
-Current external slice: R9 可取消探针、非阻塞单一调度与最终头证据返修，派发状态以 HANDOFF.md 顶部为准。R8 交付保留作失败基线；PM 未安装/部署。十连测、正式安全/Release 和 Wear Tile 仍独立开放。
+Current external slice: R9 源码/自动化/统一便携包静态门槛已通过，转入 PM 真机与双电脑 A-H 验收。R8 交付保留作失败基线；R9 未安装/启动，阶段 12 未关闭。十连测、正式安全/Release 和 Wear Tile 仍独立开放。
 
 Updated sequencing decision (user, 2026-08-29): colleague Z will do the Watch UI in the same task package as Z3 Repair 1, but only after the three Repair blockers pass automated verification. First real Galaxy Watch → existing SayIt → focused Windows input-box closure remains a later PM-unlocked device gate. The formal ten-run latency acceptance remains final.
 
