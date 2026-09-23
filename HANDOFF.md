@@ -1,12 +1,19 @@
 # SayIt Watch Transport handoff
 
-## R9 PM 源码/构建验收 GO；等待真机与双电脑 A-H（2026-09-22）
+## R9 真机自动发现 NO-GO；当前返修 `1C-D-04@R10`（2026-09-22，待发送）
+
+- 用户明确允许停止旧版并启动 R9。PM 只停止了占用 18099 的旧 `C:\SayItApp\SayIt-0.1.9.exe --minimized`，随后从已独立验签的 R9 便携目录启动 `SayIt.exe --minimized`；R9 进程当前监听 `0.0.0.0:18099`。本机 WLAN 地址为 `192.168.12.144`，未认证访问 `/api/watch/discovery` 返回预期 `401 {"error":"unauthorized"}`。旧版未删除，配置和 Token 未读取或修改。
+- Galaxy Watch 7（Android 16 / API 36）连续真实日志为 `found:type-accepted → resolve:queued → resolve:started → resolve:succeeded → candidate:rejected-type`，随后 8 秒窗口 `browse:no-candidate / verdict:none` 并按约 5 秒自动重试。故 Windows mDNS 已到达手表且解析成功；R9 失败边界在解析结果的服务类型校验，不是“未广播”或普通 TCP/Token 路径。
+- 根因已由生产代码与 Android 官方实现交叉确认：Android `NsdService` 为历史兼容把发现回调类型表示为尾点形式，把解析成功类型表示为**前导点**形式；真实 resolved 类型为 `._sayit-watch._tcp`。当前 `DiscoveryPolicy.isOurServiceType()` 仅处理尾点、`.local` 与大小写，拒绝该官方形态；227 项测试的变体列表也漏掉前导点，因而自动化误绿。
+- 同范围 R10 返修包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R10.md`。只允许修服务类型规范化/必要的 Android 映射、真实生产链回归和 Watch dev.3/code 7；Windows R9 包保持不变。**R9 真机自动发现判定 NO-GO，阶段 12 不关闭。**
+
+## R9 PM 源码/构建验收 GO；等待真机与双电脑 A-H（2026-09-22，已被上节真机结果更新）
 
 - D 的 R9 最终产品提交为 `e33b5361c3517f35d75bf210bfc1077d4f730658`，回传提交为 `0839b38`，工作树干净。相对 R8 基线仅改 2 个 Watch 产品文件、3 个 Watch 测试文件、1 个便携脚本以及 R9 任务/回传文档；未改 mDNS 协议、ASR、History、Paste、录音、正式 Release 或视觉布局。
 - PM 源码增量审核确认：`NonCancellable`、`runBlocking` 和 1.5 秒超时后并发启动均已移除；连接任务由非阻塞命令队列串行交接，旧回合完成取消/等待后才启动替代回合；健康探针失败后果由当前回合和前台状态门控。R9 的后台探针、阻塞探针换机、2 秒慢停止、取消后两个真实健康周期与实际说明产物用例均存在于真实 ViewModel→Owner→Resolver→Coordinator 链。`pending` 仍是未实际承载意图的可见字段，调度器注释对“唯一写入者”的表述也比实现更绝对；本轮作为非阻断清理项记录，不影响上述核心串行门槛。
 - PM 在最终头独立执行 `gradlew.bat testDebugUnitTest --rerun-tasks lintDebug assembleDebug --console=plain`，退出码 0：24 suites / **227 tests / 0 failures / 0 errors / 0 skipped**，lint **0 error / 37 warnings**，Debug APK SHA-256 `DAF765735C9A6EFF6D699608523FA8F2F902CCCCD1429C7E81C826A33045E318`，与回传一致。`cargo test watch_receiver` 仍在 PM 主机的既有 `transcribe-cpp-sys` CMake/MSBuild 缓存处以 `FTK1011` 退出 1，未进入 Rust 测试；D 的 62/62 只保留为执行者证据。
-- 统一 ZIP `F3487B7385C0FA8637332C5BCCEA2A1F5EB08318A80B8B0905736022093749EE` 经 PM 独立解压，28 条 `SHA256SUMS` 全部一致，包内 EXE `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`，`BUILD-INFO.git_head=e33b536`，说明控制字符 0。该结论是静态包验收，不是启动验收。
-- **分层结论：R9 源码/自动化/静态便携包 GO，可以进入设备验收；阶段 10 正式 Release 与阶段 12 双电脑端到端均未关闭。** 用户提供新端点 `192.168.12.126:34239` 后，PM 重新连接 Galaxy Watch 7。升级后遗留的旧应用进程第一次启动/停止均超时且一度拒绝退出；`am force-stop` 等旧 PID 真正消失后再次冷启动成功（`LaunchState: COLD`，约 1.6 秒），证明 R9 本身不持续黑屏。真实 R9 界面为“正在连接…”，保存地址探针被拒绝后按约定进入 8 秒 mDNS 浏览；连续三轮均为 `saved-probe:rejected → browse:started → browse:no-candidate → verdict:none`，约 5 秒后自动重试，说明晚启动重试循环在真机上运行，但尚未找到当前电脑。本机 `0.0.0.0:18099` 仍由旧 `C:\SayItApp\SayIt-0.1.9.exe --minimized` 占用；PM 未获准停止该进程，也未启动/替换 R9 便携包，因此不能把当前“无候选”归因于 R9 Watch 缺陷。下一步必须切换到同一 R9 便携包后继续 A-H。
+- 统一 ZIP `F3487B7385C0FA8637332C5BCCEA2A1F5EB08318A80B8B0905736022093749EE` 经 PM 独立解压，28 条 `SHA256SUMS` 全部一致，包内 EXE `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`，`BUILD-INFO.git_head=e33b536`，说明控制字符 0。后续已按用户授权完成启动，当前运行证据与真机结论见本文件顶部。
+- **历史分层结论：R9 源码/自动化/静态便携包 GO，可以进入设备验收；阶段 10 正式 Release 与阶段 12 双电脑端到端均未关闭。** 用户提供新端点 `192.168.12.126:34239` 后，PM 重新连接 Galaxy Watch 7。升级后遗留的旧应用进程第一次启动/停止均超时且一度拒绝退出；`am force-stop` 等旧 PID 真正消失后再次冷启动成功（`LaunchState: COLD`，约 1.6 秒），证明 R9 本身不持续黑屏。真实 R9 界面为“正在连接…”，保存地址探针被拒绝后按约定进入 8 秒 mDNS 浏览；连续三轮均为 `saved-probe:rejected → browse:started → browse:no-candidate → verdict:none`，约 5 秒后自动重试，说明晚启动重试循环在真机上运行。随后启动同一 R9 便携包取得的失败结论与根因见本文件顶部；本段不再代表当前验收状态。
 
 ## R8 PM 验收 NO-GO；当前返修 1C-D-04@R9（2026-09-22，待发送）
 
