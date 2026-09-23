@@ -241,22 +241,37 @@ interface DiscoveryProbe {
 object DiscoveryPolicy {
 
     /**
-     * 1C-D-04@R2: does a platform-reported service type belong to this product?
+     * 1C-D-04@R2/R10: does a platform-reported service type belong to this product?
      *
-     * `NsdManager` does not normalize the domain suffix: different platform
-     * versions and OEM stacks hand back `_sayit-watch._tcp.`,
-     * `_sayit-watch._tcp.local.`, or the same text with different case. The
-     * previous exact-equality comparison therefore dropped a genuinely correct
-     * instance silently, which is one of the unproven hypotheses of this
-     * regression. The comparison is now case-insensitive and domain-tolerant,
-     * while an unrelated type (`_http._tcp.`, `_sayit-watch._udp.`, an empty
-     * string, or a missing dot before `tcp`) still fails.
+     * `NsdManager` normalizes neither the domain suffix nor the case — and the two callbacks it
+     * feeds do not even agree with each other. On a real Galaxy Watch 7 (Android 16 / API 36) the
+     * observed chain is:
+     *
+     * ```
+     * onServiceFound:    "_sayit-watch._tcp."     (trailing dot)
+     * onServiceResolved: "._sayit-watch._tcp"     (ONE LEADING dot)
+     * ```
+     *
+     * The R2 comparison tolerated case, a trailing dot and the `.local` domain, but not that
+     * leading dot, so the device reached `resolve:succeeded` and then refused its own hardware with
+     * `candidate:rejected-type` — a silent, complete discovery failure with the responder working
+     * perfectly.
+     *
+     * Exactly ONE optional leading dot is accepted, combined with the existing case/whitespace,
+     * trailing-dot and `.local` tolerance. This widens the accepted *spelling* of the frozen type,
+     * never the set of services: an empty value, `.._sayit-watch._tcp` (two leading dots), an extra
+     * label (`_sayit-watch._tcp.example`), a wrong protocol (`_sayit-watch._udp`) and a similar but
+     * different name (`_sayit._tcp`) are all still refused.
      */
     fun isOurServiceType(raw: String?): Boolean {
         val type = raw?.trim()?.lowercase() ?: return false
         if (type.isEmpty()) return false
-        val withoutDot = type.removeSuffix(".")
-        val normalized = withoutDot.removeSuffix(".local")
+        // Android's resolve callback historically prefixes the type with a single dot. Strip at
+        // most one: a second leading dot is a different (malformed) name, not a variant.
+        val withoutLeadingDot = type.removePrefix(".")
+        if (withoutLeadingDot.isEmpty() || withoutLeadingDot.startsWith(".")) return false
+        val withoutTrailingDot = withoutLeadingDot.removeSuffix(".")
+        val normalized = withoutTrailingDot.removeSuffix(".local")
         return normalized == "_sayit-watch._tcp"
     }
 
