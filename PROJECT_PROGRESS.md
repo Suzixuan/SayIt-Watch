@@ -1,6 +1,6 @@
 # SayIt Watch Transport project progress
 
-当前工作：`1C-D-04@R9` 已通过 PM 源码、Watch 全量与统一便携包静态验收，最终产品头 `e33b536`；227/227、lint 0 error、APK/ZIP/EXE 哈希与包内提交均独立核对。Rust 在 PM 主机仍受既有 FTK1011 环境错误阻断。ADB 当前无设备，现用 18099 进程未停止，因此 R9 尚未安装/启动，双电脑 A-H 仍待真机验收；权威状态见 HANDOFF.md 顶部。
+当前工作：`1C-D-04@R9` 已通过 PM 源码、Watch 全量与统一便携包静态验收，最终产品头 `e33b536`；227/227、lint 0 error、APK/ZIP/EXE 哈希与包内提交均独立核对。Rust 在 PM 主机仍受既有 FTK1011 环境错误阻断。R9 APK 已保留数据安装到 Galaxy Watch 7，并读回 `0.3.0-dev.2` / code 6；启动后无线 ADB 端点离线，尚未取得运行证据。现用 18099 进程未停止、R9 便携包未启动，双电脑 A-H 仍待真机验收；权威状态见 HANDOFF.md 顶部。
 
 当前工作：用户批准 `1C-D-04@R7`，PM 任务包提交 `371ddc3`，已发送到 D 原对话并核对消息入列及生成状态。D 在 `codex/watch-connection-r7` 开发；前台连接恢复、显式选择、当前 IP 与统一自包含便携包均待交付和独立验收。当前唯一任务版本与派发证据见 `HANDOFF.md` 顶部。
 

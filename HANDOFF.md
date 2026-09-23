@@ -6,7 +6,7 @@
 - PM 源码增量审核确认：`NonCancellable`、`runBlocking` 和 1.5 秒超时后并发启动均已移除；连接任务由非阻塞命令队列串行交接，旧回合完成取消/等待后才启动替代回合；健康探针失败后果由当前回合和前台状态门控。R9 的后台探针、阻塞探针换机、2 秒慢停止、取消后两个真实健康周期与实际说明产物用例均存在于真实 ViewModel→Owner→Resolver→Coordinator 链。`pending` 仍是未实际承载意图的可见字段，调度器注释对“唯一写入者”的表述也比实现更绝对；本轮作为非阻断清理项记录，不影响上述核心串行门槛。
 - PM 在最终头独立执行 `gradlew.bat testDebugUnitTest --rerun-tasks lintDebug assembleDebug --console=plain`，退出码 0：24 suites / **227 tests / 0 failures / 0 errors / 0 skipped**，lint **0 error / 37 warnings**，Debug APK SHA-256 `DAF765735C9A6EFF6D699608523FA8F2F902CCCCD1429C7E81C826A33045E318`，与回传一致。`cargo test watch_receiver` 仍在 PM 主机的既有 `transcribe-cpp-sys` CMake/MSBuild 缓存处以 `FTK1011` 退出 1，未进入 Rust 测试；D 的 62/62 只保留为执行者证据。
 - 统一 ZIP `F3487B7385C0FA8637332C5BCCEA2A1F5EB08318A80B8B0905736022093749EE` 经 PM 独立解压，28 条 `SHA256SUMS` 全部一致，包内 EXE `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`，`BUILD-INFO.git_head=e33b536`，说明控制字符 0。该结论是静态包验收，不是启动验收。
-- **分层结论：R9 源码/自动化/静态便携包 GO，可以进入设备验收；阶段 10 正式 Release 与阶段 12 双电脑端到端均未关闭。** 本轮检查时 ADB 列表为空，且本机 `0.0.0.0:18099` 仍由 `C:\SayItApp\SayIt-0.1.9.exe --minimized` 占用；PM 未停止现用进程、未安装 APK、未替换电脑软件。下一步需手表无线调试在线，并由用户允许切换现用电脑进程后，使用同一 R9 便携包按 A-H 验收。
+- **分层结论：R9 源码/自动化/静态便携包 GO，可以进入设备验收；阶段 10 正式 Release 与阶段 12 双电脑端到端均未关闭。** 用户提供无线调试端点后，PM 连接到 Galaxy Watch 7 `SM-L310`，用 `adb install -r` 保留数据安装上述 R9 APK并收到 `Success`；设备读回 `versionName=0.3.0-dev.2`、`versionCode=6`、`lastUpdateTime=2026-09-22 17:36:58`。启动应用后无线 ADB 端点离线，原端口再次连接返回 10061，尚未取得 R9 运行截图/日志。本机 `0.0.0.0:18099` 仍由 `C:\SayItApp\SayIt-0.1.9.exe --minimized` 占用；PM 未停止现用进程、未启动/替换 R9 便携包。下一步需新的无线调试端点，并由用户允许切换现用电脑进程后，使用同一 R9 便携包按 A-H 验收。
 
 ## R8 PM 验收 NO-GO；当前返修 1C-D-04@R9（2026-09-22，待发送）
 
