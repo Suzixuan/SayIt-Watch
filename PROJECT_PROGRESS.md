@@ -1,8 +1,6 @@
 # SayIt Watch Transport project progress
 
-当前工作：`1C-D-04@R9` 源码/静态包门槛通过但真机自动发现 **NO-GO**。用户授权后，PM 已停止占用 18099 的旧进程并启动验签 R9 便携 EXE；HTTP discovery 返回预期 401。Galaxy Watch 7 / Android 16 实际收到并解析 mDNS，却在 `resolve:succeeded` 后报 `candidate:rejected-type`。Android 官方实现的 resolved 类型为前导点形态 `._sayit-watch._tcp`，当前规范化与 227 项测试均漏掉它。当前同范围返修为 `1C-D-04@R10`，任务包 `docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R10.md`，尚待发送；阶段 12 不关闭。权威状态见 HANDOFF.md 顶部。
-
-当前工作：用户批准 `1C-D-04@R7`，PM 任务包提交 `371ddc3`，已发送到 D 原对话并核对消息入列及生成状态。D 在 `codex/watch-connection-r7` 开发；前台连接恢复、显式选择、当前 IP 与统一自包含便携包均待交付和独立验收。当前唯一任务版本与派发证据见 `HANDOFF.md` 顶部。
+当前工作：`1C-D-04@R10` 已由 D 交付（产品 `91ad403`，回传 `eca6a3a`），PM 已完成范围、源码和定向自动化复验：54/54 通过，dev.3/code 7 APK 哈希与回传一致，工作树干净。R10 只修 Galaxy Watch 7 / Android 16 resolved 类型 `._sayit-watch._tcp` 的严格规范化，不重建 Windows R9 包。D 的上一个开发任务已完成并停止写入；阶段 12 仍需 PM 保留数据安装 APK 后完成单电脑真机链及双电脑 A–H，尚未 VERIFIED。权威状态见 HANDOFF.md 顶部。
 
 2026-09-20 同步状态：已通过 PR #4 合入原有公开仓库 `Suzixuan/SayIt-Watch` 的 `main`，合并提交 `b561dc6d64f28199e1ba2105a2b407ac0ccc57cb`。新版源码、手表首页与截图已在默认分支，原历史保留；尚未发布对应安装包。交接方式见 `HANDOFF.md` 顶部。阶段 12 双电脑端到端验收仍未完成。
 
@@ -35,9 +33,9 @@ Delivery 1C Repair 1 (D, 2026-09-15, contract `docs/DELIVERY-1C-D-REPAIR-1.md`):
 | Security | 9 | Repository and runtime security hardening | ☐ | 🔵 PM re-review — repair required | PM | `83056ab` + `a7ddcac` are on `main`; CodeQL succeeds and GitHub protections are enabled. Remaining blockers: zero-token loopback behavior conflicts with the documented local default; diagnostics `timeline.json` still derives titles from raw logs and can retain transcript text; wildcard Watch bind remains an unresolved product/security exception. |
 | Packaging | 10 | Self-contained silent Windows portable build and Release | ☐ | 🔵 R9 测试便携包已启动；正式 Release 未完成 | Colleague D | R9 最终产品头 `e33b536`；PM 独立复跑 227/227，lint 0 error，ZIP 28 条哈希全对，包内 `git_head` 与 EXE 哈希正确。用户授权后已从该包启动，监听 18099 且 discovery 401 正常；本轮 Watch 类型校验缺陷不要求重建 Windows 包。测试包不关闭正式 Release。 |
 | Experience | 11 | Optional Wear OS Tile card | ☐ | ⚪ Deferred | Colleague D | Initial Tiles 1.2/1.4 implementation did not compile and was reverted; current tree is clean and contains no Tile feature. This is outside the core verified flow. |
-| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔴 R9 真机 NO-GO；R10 待发送 | Colleague D, PM | 同一 R9 便携包下真实 `found/type accepted → resolve succeeded → candidate rejected type`；Android 16 resolved 回调使用 `._sayit-watch._tcp`，现有校验与测试漏掉前导点。R10 只修该官方形态及生产链回归，再由 PM 装表复验。见 HANDOFF.md 顶部。 |
+| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔵 R10 源码/定向自动化 GO；真机待验 | Colleague D, PM | D 产品 `91ad403`、回传 `eca6a3a`；PM 独立复验 54/54，dev.3/code 7 APK 哈希一致。单电脑真机必须证明 `candidate:accepted → probe:authenticated → verdict:one`，随后再做双电脑 A–H；未完成前不称 VERIFIED。见 HANDOFF.md 顶部。 |
 
-Current external slice: R9 源码/静态包门槛通过，但同一 R9 Windows 包的真机自动发现因 Android resolved 类型前导点被错误拒绝而失败。当前 `1C-D-04@R10` 待发送；Windows R9 包保持运行且不重建。阶段 12 未关闭，双电脑 A-H 顺延到 R10 单电脑真机链先通过之后。十连测、正式安全/Release 和 Wear Tile 仍独立开放。
+Current external slice: R10 已完成并通过 PM 源码、范围与定向自动化复验；Windows R9 包保持不变。当前等待 PM 将 dev.3/code 7 保留数据安装到 Galaxy Watch 7，先关闭单电脑真实自动发现链，再做双电脑 A-H。阶段 12 尚未关闭；十连测、正式安全/Release 和 Wear Tile 仍独立开放。
 
 Updated sequencing decision (user, 2026-08-29): colleague Z will do the Watch UI in the same task package as Z3 Repair 1, but only after the three Repair blockers pass automated verification. First real Galaxy Watch → existing SayIt → focused Windows input-box closure remains a later PM-unlocked device gate. The formal ten-run latency acceptance remains final.
 

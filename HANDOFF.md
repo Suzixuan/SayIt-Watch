@@ -1,6 +1,13 @@
 # SayIt Watch Transport handoff
 
-## R9 真机自动发现 NO-GO；当前返修 `1C-D-04@R10`（2026-09-22，待发送）
+## R10 D 交付与 PM 定向复验 GO；等待真机安装（2026-09-24）
+
+- D 已完成 `1C-D-04@R10`：产品提交 `91ad403c21c5e554edeb28fa205e982f74ac4a72`，回传提交 `eca6a3a`。相对任务包提交 `f8da9a1`，产品范围仅为 Watch 版本号、`DiscoveryPolicy` 服务类型规范化和两处相关 JVM 测试；另新增回传文档。`git diff --check` 通过，工作树干净，没有改 Windows 包、协议、ASR、History、Paste、录音、正式 Release 或视觉布局。
+- 修复接受 Galaxy Watch 7 / Android 16 真实 `onServiceResolved` 形态 `._sayit-watch._tcp`：只剥离一个可选前导点，同时继续严格拒绝双前导点、错误协议、额外域名和相似服务名。PM 源码审核确认该变化对应 R9 的 `candidate:rejected-type` 根因，未扩大到其他服务。
+- PM 在交付头独立运行 4 个相关测试类，退出码 0：**54 tests / 0 failures / 0 errors / 0 skipped**。Debug APK 读回 `com.sayit.watch.debug`、`0.3.0-dev.3` / code `7`、target SDK 34；SHA-256 `677E29156382CDEC6EC4AE107E8E1C17FCA694E93BD6A68B4DEA412E1E7B5AD0`，与 D 回传一致。D 报告的完整 232 项测试、lint 和 assemble 仍作为执行者证据，本轮 PM 未重复全量构建。
+- **结论：R10 源码、范围和定向自动化 GO，D 的上一个开发任务已完成并应停止写入；阶段 12 仍未关闭。** 下一步是保留数据安装 dev.3/code 7，在当前 R9 Windows 便携包下复验 `candidate:accepted → probe:authenticated → verdict:one`，再继续双电脑 A–H。未取得真机链路前，不称自动发现 VERIFIED。
+
+## R9 真机自动发现 NO-GO；R10 任务包形成记录（2026-09-22，历史状态）
 
 - 用户明确允许停止旧版并启动 R9。PM 只停止了占用 18099 的旧 `C:\SayItApp\SayIt-0.1.9.exe --minimized`，随后从已独立验签的 R9 便携目录启动 `SayIt.exe --minimized`；R9 进程当前监听 `0.0.0.0:18099`。本机 WLAN 地址为 `192.168.12.144`，未认证访问 `/api/watch/discovery` 返回预期 `401 {"error":"unauthorized"}`。旧版未删除，配置和 Token 未读取或修改。
 - Galaxy Watch 7（Android 16 / API 36）连续真实日志为 `found:type-accepted → resolve:queued → resolve:started → resolve:succeeded → candidate:rejected-type`，随后 8 秒窗口 `browse:no-candidate / verdict:none` 并按约 5 秒自动重试。故 Windows mDNS 已到达手表且解析成功；R9 失败边界在解析结果的服务类型校验，不是“未广播”或普通 TCP/Token 路径。
