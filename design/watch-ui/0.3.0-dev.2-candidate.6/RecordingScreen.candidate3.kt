@@ -1,10 +1,8 @@
 package com.sayit.watch.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -55,10 +53,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -75,7 +69,6 @@ import com.sayit.watch.net.DiscoveryState
 import com.sayit.watch.recording.WavWriter
 import com.sayit.watch.settings.DestinationValidator
 import com.sayit.watch.settings.DevTokenValidator
-import com.sayit.watch.settings.ComputerAliasPolicy
 import com.sayit.watch.settings.SettingsStore
 import kotlin.math.cos
 import kotlin.math.sin
@@ -206,7 +199,7 @@ fun RecordingScreen(viewModel: RecordingViewModel, settings: SettingsStore, hasP
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             when (ui.screen) {
                 WatchUiState.Screen.CONFIG -> ConfigScreen(viewModel, settings, ui)
-                WatchUiState.Screen.READY -> ReadyScreen(viewModel, settings, ui, discovery, canRecord, hasPermission, onRequestPermission)
+                WatchUiState.Screen.READY -> ReadyScreen(viewModel, ui, discovery, canRecord, hasPermission, onRequestPermission)
                 WatchUiState.Screen.RECORDING -> RecordingActiveScreen(viewModel)
             }
         }
@@ -251,7 +244,7 @@ private fun ConfigScreen(viewModel: RecordingViewModel, settings: SettingsStore,
 }
 
 @Composable
-private fun ReadyScreen(viewModel: RecordingViewModel, settings: SettingsStore, ui: WatchUiState, discovery: DiscoveryState, canRecord: Boolean, hasPermission: Boolean, onRequestPermission: () -> Unit) {
+private fun ReadyScreen(viewModel: RecordingViewModel, ui: WatchUiState, discovery: DiscoveryState, canRecord: Boolean, hasPermission: Boolean, onRequestPermission: () -> Unit) {
     var settingsMenuOpen by remember { mutableStateOf(false) }
     WatchDial {
         if (!hasPermission) {
@@ -328,7 +321,7 @@ private fun ReadyScreen(viewModel: RecordingViewModel, settings: SettingsStore, 
             )
         }
         if (ui.switchOpen) {
-            ComputerSwitchDialog(viewModel, settings, ui)
+            ComputerSwitchDialog(viewModel, ui)
         }
     }
 }
@@ -489,135 +482,92 @@ internal fun computerFallbackName(ip: String): String {
  * desktop response carries optional friendly metadata, each real RFC1918 endpoint gets a
  * deterministic fallback name (`电脑 · 142`) and the IP remains secondary diagnostics.
  *
- * Authenticated progress candidates are selectable immediately, but only an explicit tap changes
- * the selected target. While this dialog is visible, bounded live-presence cycles add and remove
- * non-current rows; the selected row stays pinned and can be shown offline.
+ * The R7 interaction contract is unchanged: progress candidates stay visible but disabled
+ * until the bounded browse ends, and only an explicit tap changes the selected target.
  */
 @Composable
-private fun ComputerSwitchDialog(viewModel: RecordingViewModel, settings: SettingsStore, ui: WatchUiState) {
-    var editingTarget by remember { mutableStateOf<DiscoverySelection?>(null) }
-    var aliasRevision by remember { mutableStateOf(0) }
+private fun ComputerSwitchDialog(viewModel: RecordingViewModel, ui: WatchUiState) {
     val current = ui.currentTarget
     val connected = ui.connected && ui.transportAvailable == true
     val entries = viewModel.switchEntries()
-    val rows = if (entries.isEmpty() && current != null) {
-        listOf(SwitchEntry(current, true, connected))
-    } else {
-        entries
-    }
-    val availableCount = rows.count { it.isOnline && (!it.isCurrent || connected) }
+    val rows = if (entries.isEmpty() && current != null) listOf(SwitchEntry(current, true)) else entries
+    val availableCount = rows.count { !it.isCurrent || connected }
     val noCandidate = !ui.switchSearching && availableCount == 0
 
     Dialog(
-        onDismissRequest = {
-            if (editingTarget != null) editingTarget = null else viewModel.dismissSwitchPicker()
-        },
+        onDismissRequest = { viewModel.dismissSwitchPicker() },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        val targetBeingEdited = editingTarget
-        if (targetBeingEdited != null) {
-            val savedAlias = remember(targetBeingEdited, aliasRevision) {
-                settings.computerAlias(targetBeingEdited.ip, targetBeingEdited.port)
-            }
-            ComputerCustomizationPane(
-                target = targetBeingEdited,
-                savedAlias = savedAlias,
-                onSave = { value ->
-                    settings.setComputerAlias(targetBeingEdited.ip, targetBeingEdited.port, value)
-                    aliasRevision += 1
-                    editingTarget = null
-                },
-                onReset = {
-                    settings.setComputerAlias(targetBeingEdited.ip, targetBeingEdited.port, "")
-                    aliasRevision += 1
-                    editingTarget = null
-                },
-                onClose = { editingTarget = null },
-            )
-        } else Box(Modifier.fillMaxSize().background(Color(0xFF12161D))) {
-            Column(
-                Modifier.fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 12.dp, top = 7.dp, end = 12.dp, bottom = 60.dp)
-                    .selectableGroup(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        stringResource(R.string.switch_dialog_title),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                    )
-                }
+        Column(
+            Modifier.fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .background(Color(0xFF12161D))
+                .padding(horizontal = 12.dp, vertical = 7.dp)
+                .selectableGroup(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    when {
-                        ui.switchSearching -> stringResource(R.string.switch_searching_count, availableCount)
-                        noCandidate -> stringResource(R.string.discovery_none_yet)
-                        else -> stringResource(R.string.switch_available_count, availableCount)
-                    },
-                    fontSize = 9.sp,
-                    color = if (noCandidate) WarningRed else MutedText,
-                    textAlign = TextAlign.Center,
+                    stringResource(R.string.switch_dialog_title),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+                SwitchCloseAction(
+                    onClick = { viewModel.dismissSwitchPicker() },
+                    modifier = Modifier.align(Alignment.CenterEnd).offset(x = (-18).dp),
+                )
+            }
+            Text(
+                when {
+                    ui.switchSearching -> stringResource(R.string.switch_searching_count, availableCount)
+                    noCandidate -> stringResource(R.string.discovery_none_yet)
+                    else -> stringResource(R.string.switch_available_count, availableCount)
+                },
+                fontSize = 9.sp,
+                color = if (noCandidate) WarningRed else MutedText,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(6.dp))
+            rows.forEach { entry ->
+                SwitchComputerCard(
+                    entry = entry,
+                    connected = connected,
+                    searching = ui.switchSearching,
+                    onClick = { viewModel.onTargetPicked(entry.target) },
                 )
                 Spacer(Modifier.height(5.dp))
-                rows.forEach { entry ->
-                    SwitchComputerCard(
-                        entry = entry,
-                        displayName = remember(entry.target, aliasRevision) {
-                            settings.computerAlias(entry.target.ip, entry.target.port)
-                                .ifBlank { computerFallbackName(entry.target.ip) }
-                        },
-                        connected = connected,
-                        searching = ui.switchSearching,
-                        onClick = { viewModel.onTargetPicked(entry.target) },
-                        onEdit = { editingTarget = entry.target },
-                    )
-                    Spacer(Modifier.height(5.dp))
-                }
-                SwitchRefreshAction(
-                    label = stringResource(
-                        if (ui.switchSearching) R.string.switch_restart_search else R.string.switch_search_again,
-                    ),
-                    onClick = { viewModel.requestSwitch() },
-                )
             }
-            SwitchCloseAction(
-                onClick = { viewModel.dismissSwitchPicker() },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+            SwitchRefreshAction(
+                label = stringResource(
+                    if (ui.switchSearching) R.string.switch_restart_search else R.string.switch_search_again,
+                ),
+                onClick = { viewModel.requestSwitch() },
             )
         }
     }
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
 private fun SwitchComputerCard(
     entry: SwitchEntry,
-    displayName: String,
     connected: Boolean,
     searching: Boolean,
     onClick: () -> Unit,
-    onEdit: () -> Unit,
 ) {
     val foreground = Color.White
     val secondary = when {
-        entry.isCurrent && connected && entry.isOnline -> stringResource(R.string.switch_status_current, entry.target.ip)
+        entry.isCurrent && connected -> stringResource(R.string.switch_status_current, entry.target.ip)
         entry.isCurrent -> stringResource(R.string.switch_status_offline, entry.target.ip)
-        entry.isOnline && searching -> stringResource(R.string.switch_status_verified_now)
-        entry.isOnline -> stringResource(R.string.switch_status_online, entry.target.ip)
-        else -> stringResource(R.string.switch_status_checking, entry.target.ip)
+        searching -> stringResource(R.string.switch_status_verified_now)
+        else -> stringResource(R.string.switch_status_online, entry.target.ip)
     }
     Row(
         Modifier.fillMaxWidth()
             .heightIn(min = 50.dp)
-            .semantics {
-                selected = entry.isCurrent
-                role = Role.RadioButton
-            }
-            .combinedClickable(
+            .selectable(
+                selected = entry.isCurrent,
                 onClick = onClick,
-                onLongClick = onEdit,
             )
             .background(
                 if (entry.isCurrent) Color(0xFF247CF0) else PanelSurface,
@@ -626,11 +576,11 @@ private fun SwitchComputerCard(
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SwitchComputerGlyph(active = entry.isCurrent, foreground = foreground, onEdit = onEdit)
+        SwitchComputerGlyph(active = entry.isCurrent, foreground = foreground)
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                displayName,
+                computerFallbackName(entry.target.ip),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = foreground,
@@ -647,16 +597,12 @@ private fun SwitchComputerCard(
 }
 
 @Composable
-private fun SwitchComputerGlyph(active: Boolean, foreground: Color, onEdit: () -> Unit) {
+private fun SwitchComputerGlyph(active: Boolean, foreground: Color) {
     Box(
-        Modifier.size(40.dp).clickable(onClick = onEdit),
+        Modifier.size(28.dp)
+            .background(if (active) Color(0xFF1858B5) else FieldSurface, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier.size(28.dp)
-                .background(if (active) Color(0xFF1858B5) else FieldSurface, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
         Canvas(Modifier.size(16.dp)) {
             drawRoundRect(
                 color = foreground,
@@ -680,90 +626,6 @@ private fun SwitchComputerGlyph(active: Boolean, foreground: Color, onEdit: () -
                 cap = StrokeCap.Round,
             )
         }
-        }
-        Box(
-            Modifier.align(Alignment.BottomEnd).size(13.dp).background(Color.White, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Canvas(Modifier.size(8.dp)) {
-                drawLine(
-                    SayItBlue,
-                    Offset(size.width * .18f, size.height * .82f),
-                    Offset(size.width * .82f, size.height * .18f),
-                    1.5.dp.toPx(),
-                    StrokeCap.Round,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ComputerCustomizationPane(
-    target: DiscoverySelection,
-    savedAlias: String,
-    onSave: (String) -> Unit,
-    onReset: () -> Unit,
-    onClose: () -> Unit,
-) {
-    val fallback = computerFallbackName(target.ip)
-    var draft by remember(target, savedAlias) { mutableStateOf(savedAlias.ifBlank { fallback }) }
-    var editing by remember { mutableStateOf(false) }
-    val normalized = ComputerAliasPolicy.normalize(draft)
-    Box(Modifier.fillMaxSize().background(Color(0xFF12161D))) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                .padding(start = 18.dp, top = 12.dp, end = 18.dp, bottom = 58.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(stringResource(R.string.computer_customize_title), fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.size(52.dp).background(Color(0xFF1858B5), CircleShape), contentAlignment = Alignment.Center) {
-                Canvas(Modifier.size(28.dp)) {
-                    drawRoundRect(
-                        Color.White,
-                        Offset(size.width * .13f, size.height * .08f),
-                        Size(size.width * .74f, size.height * .62f),
-                        CornerRadius(size.width * .09f),
-                        style = Stroke(width = 2.dp.toPx()),
-                    )
-                    drawLine(Color.White, Offset(size.width * .5f, size.height * .7f), Offset(size.width * .5f, size.height * .87f), 2.dp.toPx(), StrokeCap.Round)
-                    drawLine(Color.White, Offset(size.width * .25f, size.height * .89f), Offset(size.width * .75f, size.height * .89f), 2.dp.toPx(), StrokeCap.Round)
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(normalized.ifBlank { fallback }, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text("${target.ip}:${target.port}", fontSize = 9.sp, color = MutedText)
-            Spacer(Modifier.height(8.dp))
-            FieldCard(
-                stringResource(R.string.computer_name_label),
-                normalized.ifBlank { fallback },
-                onClick = { editing = true },
-            )
-            Spacer(Modifier.height(8.dp))
-            PillAction(
-                stringResource(R.string.computer_name_save),
-                { onSave(normalized) },
-                Modifier.fillMaxWidth(),
-                enabled = normalized.isNotEmpty(),
-            )
-            Box(
-                Modifier.fillMaxWidth().heightIn(min = 42.dp).clickable(onClick = onReset),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(stringResource(R.string.computer_name_reset), fontSize = 10.sp, color = MutedText)
-            }
-            Text(stringResource(R.string.computer_customize_hint), fontSize = 8.sp, color = MutedText, textAlign = TextAlign.Center)
-        }
-        SwitchCloseAction(onClick = onClose, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp))
-    }
-    if (editing) {
-        WearTextInputDialog(
-            stringResource(R.string.computer_name_label),
-            draft,
-            { draft = it; editing = false },
-            { editing = false },
-        )
     }
 }
 

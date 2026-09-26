@@ -1,6 +1,8 @@
 # SayIt Watch Transport project progress
 
-当前 UI：`1C-PM-UI-02@R3` 源码/build 完成，候选为 Watch dev.11/code 15。关闭键已从顶部圆屏边缘彻底移到底部正中；选择器打开期间连续刷新，新电脑认证后自动加入，停止的非当前电脑在完整刷新与确认探针后移除，当前电脑离线保留并标记“未连接”，恢复后原位在线。刷新只在选择器前台可见时运行。243/243、lint 0 error、Debug build 通过；已通过新端点保留数据安装，设备读回 dev.11/code 15、冷启动 Ready 正常、旋转 0/0。随后手表无线调试休眠且第二台 `.153` 不在线，因此底部关闭触控与双机动态增删仍待真机验收。权威状态见 `HANDOFF.md` 顶部与 `docs/evidence/1C-PM-UI-02-R3/`。
+当前 UI：`1C-PM-UI-02@R4` 已补回用户要求的电脑自定义入口，候选为 Watch dev.12/code 16。左侧电脑图标带铅笔角标，点图标或长按卡片进入全屏自定义，可保存本地名称或恢复默认；普通点卡片仍切换电脑。昵称只存 Watch 私有设置并按已认证 `IP:port` 隔离，不改发现/认证协议。27 suites / 246 tests / 0 failure，lint 0 error / 38 warnings，Debug build 通过，APK SHA-256 `CC7CF1DB890F446B82CCB507BAEF886F04BDBBCD78C6F69D35CE3F263978E282`。视觉/回滚候选为 `design/watch-ui/0.3.0-dev.2-candidate.6/`；手表无线调试仍离线，待装表和真机交互验收。权威状态见 `HANDOFF.md` 顶部与 `docs/evidence/1C-PM-UI-02-R4/`。
+
+上一版：`1C-PM-UI-02@R3` / dev.11 完成选择器前台实时增删与底部居中关闭，243/243、lint/build 通过并已装表；但底部关闭触控与双机动态增删尚未完成真机验收，且没有电脑别名编辑入口。R4 仅补自定义入口和本地别名，不改变 R3 的在线刷新契约。历史证据见 `docs/evidence/1C-PM-UI-02-R3/`。
 
 上一中间版：`1C-PM-UI-02@R2` / dev.9 让搜索流式出现的已认证电脑可立即点击，并通过 242/242、lint/build 与保留数据安装；但把关闭按钮仅向左移 18 dp 的视觉方案被用户实物复看否决，已由 R3 的底部居中方案取代。本轮第二台 `.153` 不可达，因此即时点击只有生产链回归、没有新一轮双机真机复验。历史证据见 `docs/evidence/1C-PM-UI-02-R2/`。
 

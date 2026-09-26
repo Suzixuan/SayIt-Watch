@@ -1,5 +1,13 @@
 # SayIt Watch Transport handoff
 
+## 电脑本地别名与自定义入口：1C-PM-UI-02@R4（2026-09-26，dev.12，待装表）
+
+- 用户指出左侧电脑图标/长按卡片本应进入自定义界面并允许重命名，但 dev.11 没有该入口。源码核对确认图标只有绘制，卡片只有普通切换事件，`SettingsStore` 也没有昵称字段；不是入口隐藏，而是上一版确实漏做。
+- dev.12/code 16 在左侧图标增加铅笔角标和 40 dp 点击区；点图标或长按整张卡片进入全屏“自定义电脑”，普通点卡片仍只执行显式切换。可保存 1–16 字符名称或恢复 `电脑 · <IP末段>` 默认名。
+- 名称只写 Watch 应用私有 `SharedPreferences`，按已经认证的 `IP:port` 隔离；不进入 mDNS、Bearer 探针、上传、日志或 Windows 端。当前没有经过认证的稳定设备 ID，所以 DHCP 改址后不自动迁移旧昵称，避免错误套到另一台电脑。
+- 冻结视觉/回滚候选 `design/watch-ui/0.3.0-dev.2-candidate.6/`，父版 candidate.5 保持不变，manifest 复算 0 failure。PM 全量 `testDebugUnitTest --rerun-tasks lintDebug assembleDebug` 退出 0：27 suites / 246 tests / 0 failures / 0 errors / 0 skipped，lint 0 errors / 38 warnings，Debug APK SHA-256 `CC7CF1DB890F446B82CCB507BAEF886F04BDBBCD78C6F69D35CE3F263978E282`。
+- **真机待验**：构建完成时手表无线调试 mDNS 服务仍未出现，dev.12 尚未装表；图标点按、长按、输入法、保存后列表即时更新和恢复默认必须在 Galaxy Watch 上复验。证据见 `docs/evidence/1C-PM-UI-02-R4/`。无 push/merge/tag/Release；发现、认证、在线刷新、录音/上传及 Windows 均未改。
+
 ## 选择器实时在线列表与底部关闭：1C-PM-UI-02@R3（2026-09-26，dev.11，已装表/待交互验收）
 
 - 用户否决 dev.9 把关闭键仅向左移动的方案，要求放在下方居中；随后要求选择器打开期间，电脑端软件关闭后自动移除、重新开启后自动出现。冻结候选 `design/watch-ui/0.3.0-dev.2-candidate.4/` 将顶部关闭键彻底移除，48 dp 触控区固定在底部正中并留 8 dp 底边；`candidate.5/` 冻结实时在线行为与回滚源。
