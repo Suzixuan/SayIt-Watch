@@ -1,5 +1,13 @@
 # SayIt Watch Transport handoff
 
+## R12-B 双电脑即时发现与显式切换：1C-PM-R12-B@R1（2026-09-26，通过）
+
+- 用户真实反馈“重新搜索仍看不到第二台笔记本”。PM 现场确认两台 Windows 端都可达，Watch 修复前同一轮已经发现、解析并认证两个端点，最终为 `verdict:ambiguous`；失败边界是已认证候选只在完整 8 秒窗口结束后一次性发布。连续点“重新搜索”会取消旧轮并重新计时，所以界面长期只显示当前电脑。
+- 产品提交 `2daf71594778dade9f49dc1146131287d426ec4b`：显式切换浏览把 authenticated-only 候选增量发布到既有 Resolver/UI 代际门控，完整窗口仍继续找更多电脑，普通自动发现的 0/1/多台判定不变；搜索中候选立即可见但窗口结束前禁用点选，避免隐藏浏览。候选为 dev.7/code 11。
+- PM 全量 25 suites / 237 tests / 0 failures / 0 errors / 0 skipped，lint 0 error / 39 warnings，Debug build 退出 0。APK SHA-256 `6A2DB354AA137D695FFEFA3B817DC2D3A742CF720B9EE5E74C8505D01A14D907`；保留数据安装成功并读回版本。
+- 双电脑真机：搜索仍显示“正在搜索…”时，`.142` 当前电脑和 `.153` 可选电脑已同时可见；窗口结束后点选 `.153` 成为当前电脑并保持 Ready，再显式切回 `.142` 成功。证据、哈希和测试条件恢复见 `docs/R12-PM-DUAL-DISCOVERY-DEV7.md` 与 `docs/evidence/R12-20260926/`。
+- **阶段 12 仍不关闭**：R12-C 尚缺 A/B 各一条真实录音的双向路由证据，R12-D 尚缺双机/重试重复检查，R12-E 尚缺真实转腕观察。R11 取消/返回和 R12-A 单机恢复的既有通过证据保留。无 push/merge/tag/Release，Windows R9 包未重建。
+
 ## R12-A 前台自动恢复：1C-PM-R12-A@R1（2026-09-26，单电脑通过）
 
 - R12 真机验收暴露新缺陷：电脑恢复后日志已 `probe:authenticated / verdict:one`，但前台仍显示“等待认证结果…”。根因是前台进入先撤销在线投影，保留目标复验成功后旧代码只清 `connecting`，没有恢复 `connected/transportAvailable`。最小修复让成功探针通过既有 `setVerifiedDestination(current)` 重新发布同一已认证目标；未改 mDNS、认证、上传协议、UI 布局或 Windows 包。
