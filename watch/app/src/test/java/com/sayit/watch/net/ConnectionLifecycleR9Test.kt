@@ -3,6 +3,7 @@ package com.sayit.watch.net
 import com.sayit.watch.recording.AudioCapture
 import com.sayit.watch.recording.RecordingSession
 import com.sayit.watch.ui.RecordingViewModel
+import com.sayit.watch.ui.readyStatusTextRes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -500,6 +501,106 @@ class ConnectionLifecycleR9Test {
             h.discovery.startCount.get(),
         )
         assertTargetAgrees(h, desktop, "across two real health periods after a cancelled switch")
+    }
+
+    @Test
+    fun `cancelling a switch restores the ready discovery projection after a successful revalidation`() {
+        val h = harness()
+        connect(h)
+
+        h.discovery.hold = true
+        h.viewModel.requestSwitch()
+        waitUntil("the switch browse must open", timeoutMs = 15_000L) {
+            h.discovery.active.get() == 1
+        }
+        assertEquals("the open browse must project Searching", DiscoveryState.Searching, h.viewModel.discovery.value)
+
+        val probesBeforeDismiss = h.probe.totalProbes()
+        h.viewModel.dismissSwitchPicker()
+        waitUntil("the browse must stop and the retained target must be revalidated", timeoutMs = 15_000L) {
+            h.discovery.active.get() == 0 &&
+                h.probe.totalProbes() > probesBeforeDismiss &&
+                h.viewModel.ownerRoundKindForTest == ConnectionTaskOwner.RoundKind.IDLE_CONNECTED
+        }
+
+        assertTargetAgrees(h, desktop, "after cancelling a switch browse")
+        assertEquals(
+            "a successful revalidation must clear the cancelled browse's stale Searching state",
+            DiscoveryState.Discovered,
+            h.viewModel.discovery.value,
+        )
+        assertEquals(
+            "the Ready status must describe the still-usable target",
+            com.sayit.watch.R.string.discovery_saved_neutral,
+            readyStatusTextRes(
+                state = h.viewModel.discovery.value,
+                connected = h.viewModel.ui.value.connected && h.viewModel.ui.value.transportAvailable == true,
+                connecting = h.viewModel.ui.value.connecting,
+            ),
+        )
+    }
+
+    @Test
+    fun `dismissing after a completed switch browse keeps the connected ready projection`() {
+        val h = harness()
+        connect(h)
+
+        h.discovery.hold = false
+        h.discovery.candidates = emptyList()
+        val startsBeforeSwitch = h.discovery.startCount.get()
+        h.viewModel.requestSwitch()
+        waitUntil("the completed switch browse must settle", timeoutMs = 15_000L) {
+            h.discovery.startCount.get() > startsBeforeSwitch &&
+                h.discovery.active.get() == 0 &&
+                h.viewModel.ownerRoundKindForTest == ConnectionTaskOwner.RoundKind.IDLE_CONNECTED
+        }
+        assertEquals(DiscoveryState.Discovered, h.viewModel.discovery.value)
+
+        h.viewModel.dismissSwitchPicker()
+        assertTargetAgrees(h, desktop, "after dismissing a completed switch browse")
+        assertEquals(DiscoveryState.Discovered, h.viewModel.discovery.value)
+        assertEquals(
+            com.sayit.watch.R.string.discovery_saved_neutral,
+            readyStatusTextRes(
+                state = h.viewModel.discovery.value,
+                connected = h.viewModel.ui.value.connected && h.viewModel.ui.value.transportAvailable == true,
+                connecting = h.viewModel.ui.value.connecting,
+            ),
+        )
+    }
+
+    @Test
+    fun `dismissing a switch without a target stays disconnected and resumes recovery`() {
+        val h = harness(retryMs = 60_000L)
+        h.discovery.hold = true
+        h.viewModel.onForeground()
+        waitUntil("the automatic recovery browse must open", timeoutMs = 15_000L) {
+            h.discovery.active.get() == 1
+        }
+        val startsBeforeSwitch = h.discovery.startCount.get()
+
+        h.viewModel.requestSwitch()
+        waitUntil("the explicit switch browse must replace recovery", timeoutMs = 15_000L) {
+            h.discovery.startCount.get() > startsBeforeSwitch && h.discovery.active.get() == 1
+        }
+        h.viewModel.dismissSwitchPicker()
+        h.discovery.hold = false
+
+        waitUntil("recovery must continue after the picker is dismissed", timeoutMs = 15_000L) {
+            h.discovery.startCount.get() > startsBeforeSwitch + 1 &&
+                h.discovery.active.get() == 0
+        }
+        assertTargetAgrees(h, null, "after dismissing a switch without a current target")
+        assertEquals(DiscoveryState.ManualFallback, h.viewModel.discovery.value)
+        assertFalse("the UI must not claim connection without an authenticated target", h.viewModel.ui.value.connected)
+        assertFalse(
+            "the Ready status must not say connected without an authenticated target",
+            readyStatusTextRes(
+                state = h.viewModel.discovery.value,
+                connected = h.viewModel.ui.value.connected && h.viewModel.ui.value.transportAvailable == true,
+                connecting = h.viewModel.ui.value.connecting,
+            ) == com.sayit.watch.R.string.discovery_saved_neutral,
+        )
     }
 
     @Test

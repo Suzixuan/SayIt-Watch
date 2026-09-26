@@ -211,7 +211,8 @@ class ConnectionLifecycleR8Test {
         waitUntil("$because: every layer must agree on $expected", timeoutMs = 5_000L) {
             h.viewModel.currentDestination() == expected &&
                 h.viewModel.resolverTargetForTest == expected &&
-                h.viewModel.canRecord.value == (expected != null)
+                h.viewModel.canRecord.value == (expected != null) &&
+                h.viewModel.ui.value.connected == (expected != null)
         }
         assertEquals("$because (ViewModel target)", expected, h.viewModel.currentDestination())
         assertEquals(

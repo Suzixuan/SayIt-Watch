@@ -1,5 +1,20 @@
 # SayIt Watch Transport handoff
 
+## 当前有效返修：1C-D-04@R11（2026-09-25，PM 自动化通过，已安装待交互复验）
+
+- Luna 修复切换取消后残留 Searching：由保留的认证目标恢复 discovery 状态，并将旧搜索 finally 的显示更新纳入回合门控。新增 3 条真实 ViewModel 与 Ready 文案回归；不改布局。
+- PM 独立全量首次 235 项中 1 项失败：R8 测试等待目标/录音状态清除后立即检查 UI，而未等 UI 投影完成。补齐等待条件（原断言不变）后全量 235/235、lint 0 error / 37 warnings、assembleDebug 全部退出 0。
+- PM 将设备候选标为 0.3.0-dev.4 / code 8；APK SHA-256 `B0C427134CB90ED9931EF681D62C16217950CB183E6628E39051B08B046CF16A`。首次 streamed 安装掉线，重连以 no-streaming 保留数据安装 Success，设备读回 dev.4/code 8，启动成功。尚待搜索中返回和搜索结束后返回的真机显示确认；不称整体通过。
+
+用户报告切换电脑后返回，仍可连接但主界面持续显示正在连接，并指定 Luna 修复。已派发原生 gpt-6-luna/high，唯一产品写入者；任务包见 `docs/DELIVERY-1C-LUNA-SWITCH-CANCEL-R11.md`。PM 负责独立审核和真机验收。R10 真实发现链通过的证据保留，阶段 12 因本问题继续开放。
+
+## R10 单电脑真机发现通过；恢复测试等待点亮手表（2026-09-24）
+
+- PM 核对 APK 哈希后执行保留数据安装，返回 Success；设备读回 `0.3.0-dev.3` / code 7。未清应用数据或修改 Token。
+- 设备时间 17:36:37–17:36:45，同一进程真实日志为 `saved-probe:rejected → browse:started → found:type-accepted → resolve:succeeded → candidate:accepted → probe:authenticated → verdict:one`。R10 前导点修复的真实 mDNS 发现与认证链通过；尚未以截图确认 Ready 文案。
+- PM 暂停 R9 接收进程后，手表连续出现 `verdict:none` 并自动重试；重启同一 R9 EXE 后 HTTP discovery 返回 401。此时手表电源状态为 `Dozing`，日志停止；原应用进程仍存活，`am start` 返回 HOT。等待用户点亮并保持 SayIt 前台，不能将此轮记为前台晚启动恢复通过。
+- 双电脑选择、双向录音到文本框仍未验；阶段 12 保持开放。电脑 R9 已恢复运行。
+
 ## R10 D 交付与 PM 定向复验 GO；等待真机安装（2026-09-24）
 
 - D 已完成 `1C-D-04@R10`：产品提交 `91ad403c21c5e554edeb28fa205e982f74ac4a72`，回传提交 `eca6a3a`。相对任务包提交 `f8da9a1`，产品范围仅为 Watch 版本号、`DiscoveryPolicy` 服务类型规范化和两处相关 JVM 测试；另新增回传文档。`git diff --check` 通过，工作树干净，没有改 Windows 包、协议、ASR、History、Paste、录音、正式 Release 或视觉布局。

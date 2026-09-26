@@ -800,8 +800,8 @@ class RecordingViewModel(
             if (resolver.isCurrentSwitchRun(browseRunId)) {
                 refreshStageTrail()
                 publishTargets()
+                uiEvent { it.switchSearching(false) }
             }
-            uiEvent { it.switchSearching(false) }
         }
         if (!resolver.isCurrentSwitchRun(browseRunId)) return
         _discovery.value =
@@ -858,6 +858,13 @@ class RecordingViewModel(
         resolver.cancelPicker()
         uiEvent(WatchUiStateMachine::switchClosed)
         val kept = resolver.verifiedTarget
+        // The picker browse projects Searching independently from the retained target. A
+        // cancellation unwinds by throwing out of handleSwitchBrowse, so the normal terminal
+        // projection below browseForSwitch is skipped. Restore the discovery projection from the
+        // same authenticated source as the connection before the health loop resumes; with no
+        // target, keep the disconnected fallback instead of implying a live connection.
+        _discovery.value =
+            if (kept != null) DiscoveryState.Discovered else DiscoveryState.ManualFallback
         // Cancel-first: the owner stops and JOINS the BROWSE round, so the browse/NSD session is
         // really over before anything else is scheduled (no hidden browse, no second listener).
         taskOwner.stop()

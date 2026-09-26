@@ -15,8 +15,9 @@ android {
         // 1C-D-04@R10: the NSD service-type form the platform's resolve callback really reports is
         // now accepted, so the APK is bumped to dev.3/code 7 and PM can read the version back to
         // confirm the tested build on the device.
-        versionCode = 7
-        versionName = "0.3.0-dev.3"
+        // R11: distinguish the switch-cancel status repair during device acceptance.
+        versionCode = 8
+        versionName = "0.3.0-dev.4"
         minSdk = 30
         targetSdk = 34
     }
