@@ -969,7 +969,13 @@ class RecordingViewModel(
         val current = verifiedDestination ?: return false
         val coordinatorLocal = coordinator ?: return false
         val ok = coordinatorLocal.probeCandidate(current)
-        if (ok) uiEvent(WatchUiStateMachine::connectionRoundFinished)
+        if (ok) {
+            // Foreground entry deliberately drops the historical online projection before this
+            // probe runs. Re-publish the same authenticated target on success; merely clearing the
+            // `connecting` flag leaves `connected` / `transportAvailable` false and the Ready UI
+            // stuck on "waiting for authentication" even though the probe already succeeded.
+            setVerifiedDestination(current)
+        }
         return ok
     }
 
