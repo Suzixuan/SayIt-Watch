@@ -16,8 +16,8 @@ android {
         // now accepted, so the APK is bumped to dev.3/code 7 and PM can read the version back to
         // confirm the tested build on the device.
         // R11: distinguish the switch-cancel status repair during device acceptance.
-        versionCode = 8
-        versionName = "0.3.0-dev.4"
+        versionCode = 9
+        versionName = "0.3.0-dev.5"
         minSdk = 30
         targetSdk = 34
     }
