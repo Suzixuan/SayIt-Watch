@@ -7,9 +7,6 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1121,10 +1118,6 @@ class ResolverBridge(
     @Volatile
     private var knownTargets: List<DiscoverySelection> = emptyList()
 
-    /** Last confirmed live set for the visible picker; the current target may be absent/offline. */
-    @Volatile
-    private var pickerOnlineTargets: Set<DiscoverySelection> = emptySet()
-
     /** The computers authenticated in this session (bounded, address data). */
     val rememberedTargets: List<DiscoverySelection> get() = knownTargets
 
@@ -1257,10 +1250,6 @@ class ResolverBridge(
             return out.toList()
         }
 
-    /** True only when this picker row answered during the current live-presence cycle. */
-    fun isPickerCandidateOnline(candidate: DiscoverySelection): Boolean =
-        pickerOnlineTargets.contains(candidate)
-
     /** The computer in use, even when it is not (or no longer) in the browse list. */
     val currentTarget: DiscoverySelection? get() = engine.verifiedTarget
 
@@ -1271,8 +1260,6 @@ class ResolverBridge(
      */
     fun openPicker() {
         pickerOpen = true
-        // Start from the last authenticated truth; the first live round reconciles it.
-        pickerOnlineTargets = pickerCandidates.toSet()
     }
 
     /** Closes the picker without changing the target. Idempotent. */
@@ -1301,9 +1288,9 @@ class ResolverBridge(
      * including when exactly one new computer was found. This method therefore only
      * merges what authenticated and refreshes the picker — it never adopts.
      *
-     * The computer in use is preserved deliberately. A missing mDNS advertisement alone is never
-     * enough to remove a row: the live picker confirms every visible endpoint with the existing
-     * authenticated probe at the cycle boundary. A failed current row is retained as offline.
+     * The computer in use is preserved deliberately. It is not re-probed inside the
+     * browse, so "did not appear in this 8 s window" is not evidence that it is gone;
+     * the bounded idle health check is what decides that (1C-D-04@R7 §2A).
      */
     suspend fun handleSwitchBrowse(
         runId: Long,
@@ -1323,23 +1310,13 @@ class ResolverBridge(
             if (runId != switchGeneration) return@progress
             if (!engine.isCurrentAutomaticRun(generation)) return@progress
             mergeKnown(partial)
-            pickerOnlineTargets = LinkedHashSet(pickerOnlineTargets).apply { addAll(partial) }
             onProgress(pickerCandidates)
         })
+        if (collected != null) mergeKnown(collected)
         if (!engine.isCurrentAutomaticRun(generation)) {
             endPickerSearch()
             return emptyList()
         }
-        // A browse result is not a permanent roster. At the end of every visible-picker cycle,
-        // re-probe all rows concurrently: discovered + authenticated rows stay, an mDNS miss that
-        // still answers stays, and a non-current row that answers neither is removed. The selected
-        // row is always retained by pickerCandidates and merely becomes offline.
-        reconcilePickerPresence(collected ?: emptyList())
-        if (!engine.isCurrentAutomaticRun(generation)) {
-            endPickerSearch()
-            return emptyList()
-        }
-        onProgress(pickerCandidates)
         // "The search is over" and "the user has a target" are different transitions
         // and are never merged (1C-D-04@R4 必修 1): the resolution is released to Idle
         // and the target stays exactly as it was.
@@ -1454,22 +1431,6 @@ class ResolverBridge(
         val merged = LinkedHashSet(knownTargets)
         merged.addAll(targets)
         knownTargets = merged.toList().take(MAX_REMEMBERED_TARGETS)
-    }
-
-    /** Reconciles the visible picker against authenticated liveness without changing its target. */
-    private suspend fun reconcilePickerPresence(discovered: List<DiscoverySelection>) {
-        val candidates = LinkedHashSet<DiscoverySelection>().apply {
-            addAll(pickerCandidates)
-            addAll(discovered)
-        }.take(MAX_REMEMBERED_TARGETS)
-        val live = coroutineScope {
-            candidates.map { candidate ->
-                async { candidate to executePickProbe(candidate) }
-            }.awaitAll()
-        }.filter { it.second }.mapTo(LinkedHashSet()) { it.first }
-        pickerOnlineTargets = live
-        val current = engine.verifiedTarget
-        knownTargets = live.filter { it != current }.take(MAX_REMEMBERED_TARGETS)
     }
 
     /**

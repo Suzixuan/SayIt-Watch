@@ -245,7 +245,8 @@ class RecordingReadyEntryR5Test {
             "switch_status_current",
             "switch_status_online",
             "switch_status_offline",
-            "switch_status_verified_wait",
+            "switch_status_checking",
+            "switch_status_verified_now",
         )) {
             assertTrue("missing string resource: $name", strings.contains("name=\"$name\""))
         }

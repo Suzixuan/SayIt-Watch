@@ -482,21 +482,16 @@ internal fun computerFallbackName(ip: String): String {
  * desktop response carries optional friendly metadata, each real RFC1918 endpoint gets a
  * deterministic fallback name (`电脑 · 142`) and the IP remains secondary diagnostics.
  *
- * Authenticated progress candidates are selectable immediately, but only an explicit tap changes
- * the selected target. While this dialog is visible, bounded live-presence cycles add and remove
- * non-current rows; the selected row stays pinned and can be shown offline.
+ * The R7 interaction contract is unchanged: progress candidates stay visible but disabled
+ * until the bounded browse ends, and only an explicit tap changes the selected target.
  */
 @Composable
 private fun ComputerSwitchDialog(viewModel: RecordingViewModel, ui: WatchUiState) {
     val current = ui.currentTarget
     val connected = ui.connected && ui.transportAvailable == true
     val entries = viewModel.switchEntries()
-    val rows = if (entries.isEmpty() && current != null) {
-        listOf(SwitchEntry(current, true, connected))
-    } else {
-        entries
-    }
-    val availableCount = rows.count { it.isOnline && (!it.isCurrent || connected) }
+    val rows = if (entries.isEmpty() && current != null) listOf(SwitchEntry(current, true)) else entries
+    val availableCount = rows.count { !it.isCurrent || connected }
     val noCandidate = !ui.switchSearching && availableCount == 0
 
     Dialog(
@@ -565,11 +560,10 @@ private fun SwitchComputerCard(
 ) {
     val foreground = Color.White
     val secondary = when {
-        entry.isCurrent && connected && entry.isOnline -> stringResource(R.string.switch_status_current, entry.target.ip)
+        entry.isCurrent && connected -> stringResource(R.string.switch_status_current, entry.target.ip)
         entry.isCurrent -> stringResource(R.string.switch_status_offline, entry.target.ip)
-        entry.isOnline && searching -> stringResource(R.string.switch_status_verified_now)
-        entry.isOnline -> stringResource(R.string.switch_status_online, entry.target.ip)
-        else -> stringResource(R.string.switch_status_checking, entry.target.ip)
+        searching -> stringResource(R.string.switch_status_verified_now)
+        else -> stringResource(R.string.switch_status_online, entry.target.ip)
     }
     Row(
         Modifier.fillMaxWidth()

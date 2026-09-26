@@ -113,7 +113,7 @@ class DiscoverySwitchFlowR3Test {
         }
     }
 
-    private class FakeProbe(private val authenticated: Set<Pair<String, Int>>) : DiscoveryProbe {
+    private class FakeProbe(@Volatile var authenticated: Set<Pair<String, Int>>) : DiscoveryProbe {
         val probed = mutableListOf<Pair<String, Int>>()
         override fun probe(ip: String, port: Int, token: String, timeoutMs: Int): DiscoveryProbeResult {
             probed.add(ip to port)
@@ -150,6 +150,7 @@ class DiscoverySwitchFlowR3Test {
         val discovery: FakeDiscovery,
         val probe: FakeProbe,
         private val timing: DiscoveryTiming = FakeTiming(),
+        private val pickerRefreshDelayMs: Long = ConnectionTaskOwner.DefaultPickerRefreshDelayMs,
     ) {
         lateinit var coordinator: DiscoveryCoordinator
         lateinit var viewModel: RecordingViewModel
@@ -176,6 +177,7 @@ class DiscoverySwitchFlowR3Test {
                 discoveryBrowser = discovery,
                 discoveryProbe = probe,
                 coordinatorOverride = coordinator,
+                pickerRefreshDelayMs = pickerRefreshDelayMs,
             )
         }
 
@@ -237,9 +239,10 @@ class DiscoverySwitchFlowR3Test {
         savedIp: String = "",
         authenticated: Set<Pair<String, Int>> = setOf(oldPc.ip to oldPc.port, newPc.ip to newPc.port),
         timing: DiscoveryTiming = FakeTiming(),
+        pickerRefreshDelayMs: Long = ConnectionTaskOwner.DefaultPickerRefreshDelayMs,
     ): Harness {
         val settings = FakeSettings(savedIp, if (savedIp.isEmpty()) "" else "18099", validToken)
-        return Harness(settings, FakeDiscovery(), FakeProbe(authenticated), timing).also { it.build() }
+        return Harness(settings, FakeDiscovery(), FakeProbe(authenticated), timing, pickerRefreshDelayMs).also { it.build() }
     }
 
     // ── 必修 1: the first switch must be adoptable ────────────────────────────
@@ -302,8 +305,76 @@ class DiscoverySwitchFlowR3Test {
         }
         assertTrue("the full collection window must still be open", h.coordinator.isRunning)
         assertEquals("the working computer must remain selected", oldPc, h.viewModel.currentDestination())
+        val stopsBeforePick = h.discovery.stopCount
 
+        // 1C-PM-UI-02@R2: the row is already authenticated, so the user may choose it now.
+        // The active browse must stop instead of running invisibly for the rest of its window.
+        h.viewModel.onTargetPicked(newPc)
+        waitUntil("the streamed computer must be adopted immediately") {
+            h.viewModel.currentDestination() == newPc && !h.viewModel.ui.value.switchOpen
+        }
+        waitUntil("the picker browse must stop after the pick") {
+            h.discovery.stopCount > stopsBeforePick && !h.viewModel.ui.value.switchSearching
+        }
+        assertTrue(h.viewModel.canRecord.value)
+        assertEquals(newPc.ip to newPc.port, h.settings.lastSaved)
+    }
+
+    @Test
+    fun `an open picker continuously adds live computers and removes stopped non-current computers`() {
+        val h = harness(savedIp = oldPc.ip, pickerRefreshDelayMs = 40L)
+        h.viewModel.onForeground()
+        waitForTarget(h, oldPc)
+        h.viewModel.pauseConnectionTaskForTest()
+
+        // Both desktop apps are online when the picker opens.
+        h.discovery.next = listOf(realService(oldPc.ip), realService(newPc.ip))
+        h.viewModel.requestSwitch()
+        waitUntil("the second computer must appear online without waiting for the window to end") {
+            h.viewModel.switchEntries().any { it.target == newPc && it.isOnline }
+        }
+
+        // The non-current app stops. One complete live cycle plus its confirmation probe removes it.
+        h.discovery.next = listOf(realService(oldPc.ip))
+        h.probe.authenticated = setOf(oldPc.ip to oldPc.port)
+        waitUntil("a stopped non-current computer must leave the live picker", timeoutMs = 5_000L) {
+            h.viewModel.switchEntries().none { it.target == newPc }
+        }
+
+        // The selected app also stops. Its row stays for orientation, but changes to offline.
+        h.discovery.next = emptyList()
+        h.probe.authenticated = emptySet()
+        waitUntil("the selected computer must remain visible as offline", timeoutMs = 5_000L) {
+            h.viewModel.switchEntries().any { it.target == oldPc && it.isCurrent && !it.isOnline }
+        }
+
+        // A different app starts while the same picker remains open; no tap or page re-entry.
+        h.discovery.next = listOf(realService(newPc.ip))
+        h.probe.authenticated = setOf(newPc.ip to newPc.port)
+        waitUntil("a newly started computer must join the same open picker", timeoutMs = 5_000L) {
+            h.viewModel.switchEntries().any { it.target == newPc && !it.isCurrent && it.isOnline }
+        }
+        assertTrue(
+            "the offline selected computer remains pinned",
+            h.viewModel.switchEntries().any { it.target == oldPc && it.isCurrent && !it.isOnline },
+        )
+
+        // The selected app also returns to online in place; no duplicate row is created.
+        h.discovery.next = listOf(realService(oldPc.ip), realService(newPc.ip))
+        h.probe.authenticated = setOf(oldPc.ip to oldPc.port, newPc.ip to newPc.port)
+        waitUntil("the selected computer must return online in place", timeoutMs = 5_000L) {
+            h.viewModel.switchEntries().count { it.target == oldPc && it.isCurrent && it.isOnline } == 1
+        }
+
+        // Closing/backgrounding the picker must stop its refresh cadence.
         h.viewModel.dismissSwitchPicker()
+        h.viewModel.onBackground()
+        waitUntil("the picker refresh must settle") {
+            !h.coordinator.isRunning && !h.viewModel.isConnectionTaskRunningForTest
+        }
+        val startsAfterClose = h.discovery.startCount
+        Thread.sleep(800L)
+        assertEquals("no picker browse may survive after close/background", startsAfterClose, h.discovery.startCount)
     }
 
     @Test

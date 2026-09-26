@@ -1,5 +1,22 @@
 # SayIt Watch Transport handoff
 
+## 选择器实时在线列表与底部关闭：1C-PM-UI-02@R3（2026-09-26，dev.11，待装表）
+
+- 用户否决 dev.9 把关闭键仅向左移动的方案，要求放在下方居中；随后要求选择器打开期间，电脑端软件关闭后自动移除、重新开启后自动出现。冻结候选 `design/watch-ui/0.3.0-dev.2-candidate.4/` 将顶部关闭键彻底移除，48 dp 触控区固定在底部正中并留 8 dp 底边；`candidate.5/` 冻结实时在线行为与回滚源。
+- dev.11/code 15 让可见选择器连续运行既有有界认证浏览。新电脑通过认证即增量加入；每轮结束并行用既有 Bearer 探针复核所有可见条目，非当前电脑若既未发现又不再应答则移除。当前电脑离线只标记“未连接”并保留，恢复后原位回到在线；不自动切换、不因显示状态写设置。
+- 持续刷新仍由唯一 `ConnectionTaskOwner` 串行调度，只在选择器可见且应用前台时重复；关闭、退后台、点选、录音交接和销毁都会取消并等待当前轮结束，不新增后台轮询或并行 NSD listener。
+- 新增生产链回归覆盖“两台出现→关闭非当前后移除→关闭当前后保留离线→重新开启另一台后自动出现→当前恢复原位且不重复→关闭/后台后停止”。PM 全量 26 suites / 243 tests / 0 failures / 0 errors，lint 0 errors / 38 warnings，Debug build 成功；最终 APK SHA-256 `934CC882968ADC4FC6748FEC475547CB86FE40AC112EE62C162F75073494D305`。
+- **设备仍未验收**：旧无线 ADB `192.168.12.126:36727` 当前拒绝连接，dev.11 尚未装表；手表仍是 dev.9。源码/build 证据见 `docs/evidence/1C-PM-UI-02-R3/`。取得新端点后需保留数据安装，并以两台真实电脑完成开/关软件往返和底部关闭触控检查。
+- 无 push/merge/tag/Release；Windows、协议、认证口径、录音/上传、Provider/ASR/History/Paste 均未改。R12-C/D/E 保持开放。
+
+## 电脑选择器等待与圆屏关闭中间版：1C-PM-UI-02@R2（2026-09-26，dev.9，视觉否决）
+
+- 用户指出 dev.8 每次进入“切换电脑”都必须等搜索结束才能选择，且关闭符号被圆屏边缘挡住。原因确认：候选在加入列表前已经通过既有 Bearer 认证，但 UI 仍用 `switchSearching` 整体禁用卡片；关闭按钮则贴在容器最右侧，没有为实体圆屏留足安全区。
+- dev.9/code 13 允许已认证候选一出现就点击。点击时停止剩余的 picker browse、代际拒绝迟到回调并保留当前目标/候选，再复用既有显式选择确认探针；确认成功才采用和持久化，拒绝则保留当前电脑，未降低认证门槛。关闭按钮保持 48 dp 触控区并向左移 18 dp。
+- PM 定向生产链回归通过；全量 26 suites / 242 tests / 0 failures / 0 errors，lint 0 errors / 38 warnings，Debug build 成功。APK SHA-256 `64B4ACAEF12703B00B6D7A3338E5F6AC8B6B52F2A7B3211F4B32ED54DFDA4BE6`；保留数据安装 Success，设备读回 dev.9/code 13。
+- 自动截图和坐标点击显示该图标可见、可返回 Ready，但用户实物复看确认仍被圆屏遮挡；用户证据优先，因此 dev.9 视觉验收否决并由底部居中的 candidate.4/dev.11 取代。旋转设置验收后仍为 0/0。本轮 `.142` 可达并返回预期 401，`.153` 无响应，因此不把新一轮“双机搜索中立即点选”写成真机通过；该时序由真实 ViewModel→owner→resolver→coordinator 回归覆盖。
+- 无 push/merge/tag/Release；R12-C/D/E 未验证项保持开放。正式自定义昵称仍需未来经过认证的身份元数据契约，不以本地伪昵称替代。
+
 ## 电脑身份选择器实施与真机检查：1C-PM-UI-02@R1（2026-09-26，dev.8）
 
 - 用户确认先做出来看。PM 以冻结候选 `design/watch-ui/0.3.0-dev.2-candidate.2/` 为父版，只修改 Watch 选择器、相关字符串/测试和版本号；Windows、发现/认证、目标选择、录音/上传及 Provider/ASR/History/Paste 均未改。

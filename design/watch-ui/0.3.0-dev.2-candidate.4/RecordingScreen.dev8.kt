@@ -482,75 +482,67 @@ internal fun computerFallbackName(ip: String): String {
  * desktop response carries optional friendly metadata, each real RFC1918 endpoint gets a
  * deterministic fallback name (`电脑 · 142`) and the IP remains secondary diagnostics.
  *
- * Authenticated progress candidates are selectable immediately, but only an explicit tap changes
- * the selected target. While this dialog is visible, bounded live-presence cycles add and remove
- * non-current rows; the selected row stays pinned and can be shown offline.
+ * The R7 interaction contract is unchanged: progress candidates stay visible but disabled
+ * until the bounded browse ends, and only an explicit tap changes the selected target.
  */
 @Composable
 private fun ComputerSwitchDialog(viewModel: RecordingViewModel, ui: WatchUiState) {
     val current = ui.currentTarget
     val connected = ui.connected && ui.transportAvailable == true
     val entries = viewModel.switchEntries()
-    val rows = if (entries.isEmpty() && current != null) {
-        listOf(SwitchEntry(current, true, connected))
-    } else {
-        entries
-    }
-    val availableCount = rows.count { it.isOnline && (!it.isCurrent || connected) }
+    val rows = if (entries.isEmpty() && current != null) listOf(SwitchEntry(current, true)) else entries
+    val availableCount = rows.count { !it.isCurrent || connected }
     val noCandidate = !ui.switchSearching && availableCount == 0
 
     Dialog(
         onDismissRequest = { viewModel.dismissSwitchPicker() },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Box(
-            Modifier.fillMaxSize().background(Color(0xFF12161D)),
+        Column(
+            Modifier.fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .background(Color(0xFF12161D))
+                .padding(horizontal = 12.dp, vertical = 7.dp)
+                .selectableGroup(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(
-                Modifier.fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 12.dp, top = 7.dp, end = 12.dp, bottom = 60.dp)
-                    .selectableGroup(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        stringResource(R.string.switch_dialog_title),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                    )
-                }
+            Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    when {
-                        ui.switchSearching -> stringResource(R.string.switch_searching_count, availableCount)
-                        noCandidate -> stringResource(R.string.discovery_none_yet)
-                        else -> stringResource(R.string.switch_available_count, availableCount)
-                    },
-                    fontSize = 9.sp,
-                    color = if (noCandidate) WarningRed else MutedText,
-                    textAlign = TextAlign.Center,
+                    stringResource(R.string.switch_dialog_title),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
                 )
-                Spacer(Modifier.height(5.dp))
-                rows.forEach { entry ->
-                    SwitchComputerCard(
-                        entry = entry,
-                        connected = connected,
-                        searching = ui.switchSearching,
-                        onClick = { viewModel.onTargetPicked(entry.target) },
-                    )
-                    Spacer(Modifier.height(5.dp))
-                }
-                SwitchRefreshAction(
-                    label = stringResource(
-                        if (ui.switchSearching) R.string.switch_restart_search else R.string.switch_search_again,
-                    ),
-                    onClick = { viewModel.requestSwitch() },
+                SwitchCloseAction(
+                    onClick = { viewModel.dismissSwitchPicker() },
+                    modifier = Modifier.align(Alignment.CenterEnd),
                 )
             }
-            SwitchCloseAction(
-                onClick = { viewModel.dismissSwitchPicker() },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+            Text(
+                when {
+                    ui.switchSearching -> stringResource(R.string.switch_searching_count, availableCount)
+                    noCandidate -> stringResource(R.string.discovery_none_yet)
+                    else -> stringResource(R.string.switch_available_count, availableCount)
+                },
+                fontSize = 9.sp,
+                color = if (noCandidate) WarningRed else MutedText,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(6.dp))
+            rows.forEach { entry ->
+                SwitchComputerCard(
+                    entry = entry,
+                    connected = connected,
+                    searching = ui.switchSearching,
+                    onClick = { viewModel.onTargetPicked(entry.target) },
+                )
+                Spacer(Modifier.height(5.dp))
+            }
+            SwitchRefreshAction(
+                label = stringResource(
+                    if (ui.switchSearching) R.string.switch_restart_search else R.string.switch_search_again,
+                ),
+                onClick = { viewModel.requestSwitch() },
             )
         }
     }
@@ -563,23 +555,28 @@ private fun SwitchComputerCard(
     searching: Boolean,
     onClick: () -> Unit,
 ) {
-    val foreground = Color.White
+    val enabled = !searching
+    val foreground = if (enabled || entry.isCurrent) Color.White else Color(0xFF788392)
     val secondary = when {
-        entry.isCurrent && connected && entry.isOnline -> stringResource(R.string.switch_status_current, entry.target.ip)
+        entry.isCurrent && connected -> stringResource(R.string.switch_status_current, entry.target.ip)
         entry.isCurrent -> stringResource(R.string.switch_status_offline, entry.target.ip)
-        entry.isOnline && searching -> stringResource(R.string.switch_status_verified_now)
-        entry.isOnline -> stringResource(R.string.switch_status_online, entry.target.ip)
-        else -> stringResource(R.string.switch_status_checking, entry.target.ip)
+        searching -> stringResource(R.string.switch_status_verified_wait)
+        else -> stringResource(R.string.switch_status_online, entry.target.ip)
     }
     Row(
         Modifier.fillMaxWidth()
             .heightIn(min = 50.dp)
             .selectable(
                 selected = entry.isCurrent,
+                enabled = enabled,
                 onClick = onClick,
             )
             .background(
-                if (entry.isCurrent) Color(0xFF247CF0) else PanelSurface,
+                when {
+                    entry.isCurrent -> Color(0xFF247CF0)
+                    enabled -> PanelSurface
+                    else -> Color(0xFF1B2028)
+                },
                 RoundedCornerShape(16.dp),
             )
             .padding(horizontal = 10.dp, vertical = 7.dp),

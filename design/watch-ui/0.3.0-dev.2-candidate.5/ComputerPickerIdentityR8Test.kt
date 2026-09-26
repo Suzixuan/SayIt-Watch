@@ -35,13 +35,12 @@ class ComputerPickerIdentityR8Test {
     }
 
     @Test
-    fun `streamed authenticated candidates are immediately selectable`() {
+    fun `streamed candidates stay visible but disabled until search completes`() {
         val card = source.substringAfter("private fun SwitchComputerCard(")
             .substringBefore("private fun SwitchComputerGlyph(")
-        assertFalse(card.contains("enabled = !searching"))
-        assertFalse(card.contains("enabled = enabled"))
-        assertTrue(card.contains("R.string.switch_status_verified_now"))
-        assertTrue(card.contains("entry.isOnline"))
+        assertTrue(card.contains("val enabled = !searching"))
+        assertTrue(card.contains("enabled = enabled"))
+        assertTrue(card.contains("R.string.switch_status_verified_wait"))
     }
 
     @Test
@@ -50,7 +49,5 @@ class ComputerPickerIdentityR8Test {
             .substringBefore("private fun RecordingActiveScreen(")
         assertTrue(picker.contains("size(48.dp).clickable"))
         assertTrue(picker.contains("fillMaxWidth().height(48.dp).clickable"))
-        assertFalse(source.contains("Modifier.align(Alignment.CenterEnd)"))
-        assertTrue(source.contains("Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)"))
     }
 }
