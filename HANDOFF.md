@@ -1,5 +1,67 @@
 # SayIt Watch Transport handoff
 
+## SayIt 应用竖屏固定（2026-09-25）
+
+用户要求关闭手表界面自动旋转。主 Activity 原未声明方向；PM 仅新增 `screenOrientation=portrait`，版本升为 dev.5/code 9。lintDebug/assembleDebug 退出 0，最终 APK 清单读回方向值 1（portrait）。保留数据安装 Success，设备读回 dev.5/code 9，冷启动成功。APK SHA-256 `2B906154F6341E7A014859276F7E97D4EBF71C39A3B29000079955AA4134669F`。未改系统旋转设置或 UI 布局；实物转腕效果待用户确认，原双电脑验收未关闭。
+
+## 当前有效返修：1C-D-04@R11（2026-09-25，本项验收通过）
+
+- 修复提交 `c334e25`。用户针对 PM 要求的“搜索中返回、搜索结束后返回”真机复测回复“可以了”。结合 PM 235 项自动化通过及设备版本读回，关闭本次返回后残留“正在连接”的缺陷；用户交互反馈与 PM 自动化证据分别记录。双电脑选择与双向录音、前台晚启动恢复仍未完整验收，阶段 12 不关闭。
+
+- Luna 修复切换取消后残留 Searching：由保留的认证目标恢复 discovery 状态，并将旧搜索 finally 的显示更新纳入回合门控。新增 3 条真实 ViewModel 与 Ready 文案回归；不改布局。
+- PM 独立全量首次 235 项中 1 项失败：R8 测试等待目标/录音状态清除后立即检查 UI，而未等 UI 投影完成。补齐等待条件（原断言不变）后全量 235/235、lint 0 error / 37 warnings、assembleDebug 全部退出 0。
+- PM 将设备候选标为 0.3.0-dev.4 / code 8；APK SHA-256 `B0C427134CB90ED9931EF681D62C16217950CB183E6628E39051B08B046CF16A`。首次 streamed 安装掉线，重连以 no-streaming 保留数据安装 Success，设备读回 dev.4/code 8，启动成功。尚待搜索中返回和搜索结束后返回的真机显示确认；不称整体通过。
+
+用户报告切换电脑后返回，仍可连接但主界面持续显示正在连接，并指定 Luna 修复。原生 gpt-6-luna/high 已完成该修复；任务包见 `docs/DELIVERY-1C-LUNA-SWITCH-CANCEL-R11.md`。R10 真实发现链通过的证据保留，阶段 12 仅因其余未验场景继续开放。
+
+## R10 单电脑真机发现通过；恢复测试等待点亮手表（2026-09-24）
+
+- PM 核对 APK 哈希后执行保留数据安装，返回 Success；设备读回 `0.3.0-dev.3` / code 7。未清应用数据或修改 Token。
+- 设备时间 17:36:37–17:36:45，同一进程真实日志为 `saved-probe:rejected → browse:started → found:type-accepted → resolve:succeeded → candidate:accepted → probe:authenticated → verdict:one`。R10 前导点修复的真实 mDNS 发现与认证链通过；尚未以截图确认 Ready 文案。
+- PM 暂停 R9 接收进程后，手表连续出现 `verdict:none` 并自动重试；重启同一 R9 EXE 后 HTTP discovery 返回 401。此时手表电源状态为 `Dozing`，日志停止；原应用进程仍存活，`am start` 返回 HOT。等待用户点亮并保持 SayIt 前台，不能将此轮记为前台晚启动恢复通过。
+- 双电脑选择、双向录音到文本框仍未验；阶段 12 保持开放。电脑 R9 已恢复运行。
+
+## R10 D 交付与 PM 定向复验 GO；等待真机安装（2026-09-24）
+
+- D 已完成 `1C-D-04@R10`：产品提交 `91ad403c21c5e554edeb28fa205e982f74ac4a72`，回传提交 `eca6a3a`。相对任务包提交 `f8da9a1`，产品范围仅为 Watch 版本号、`DiscoveryPolicy` 服务类型规范化和两处相关 JVM 测试；另新增回传文档。`git diff --check` 通过，工作树干净，没有改 Windows 包、协议、ASR、History、Paste、录音、正式 Release 或视觉布局。
+- 修复接受 Galaxy Watch 7 / Android 16 真实 `onServiceResolved` 形态 `._sayit-watch._tcp`：只剥离一个可选前导点，同时继续严格拒绝双前导点、错误协议、额外域名和相似服务名。PM 源码审核确认该变化对应 R9 的 `candidate:rejected-type` 根因，未扩大到其他服务。
+- PM 在交付头独立运行 4 个相关测试类，退出码 0：**54 tests / 0 failures / 0 errors / 0 skipped**。Debug APK 读回 `com.sayit.watch.debug`、`0.3.0-dev.3` / code `7`、target SDK 34；SHA-256 `677E29156382CDEC6EC4AE107E8E1C17FCA694E93BD6A68B4DEA412E1E7B5AD0`，与 D 回传一致。D 报告的完整 232 项测试、lint 和 assemble 仍作为执行者证据，本轮 PM 未重复全量构建。
+- **结论：R10 源码、范围和定向自动化 GO，D 的上一个开发任务已完成并应停止写入；阶段 12 仍未关闭。** 下一步是保留数据安装 dev.3/code 7，在当前 R9 Windows 便携包下复验 `candidate:accepted → probe:authenticated → verdict:one`，再继续双电脑 A–H。未取得真机链路前，不称自动发现 VERIFIED。
+
+## R9 真机自动发现 NO-GO；R10 任务包形成记录（2026-09-22，历史状态）
+
+- 用户明确允许停止旧版并启动 R9。PM 只停止了占用 18099 的旧 `C:\SayItApp\SayIt-0.1.9.exe --minimized`，随后从已独立验签的 R9 便携目录启动 `SayIt.exe --minimized`；R9 进程当前监听 `0.0.0.0:18099`。本机 WLAN 地址为 `192.168.12.144`，未认证访问 `/api/watch/discovery` 返回预期 `401 {"error":"unauthorized"}`。旧版未删除，配置和 Token 未读取或修改。
+- Galaxy Watch 7（Android 16 / API 36）连续真实日志为 `found:type-accepted → resolve:queued → resolve:started → resolve:succeeded → candidate:rejected-type`，随后 8 秒窗口 `browse:no-candidate / verdict:none` 并按约 5 秒自动重试。故 Windows mDNS 已到达手表且解析成功；R9 失败边界在解析结果的服务类型校验，不是“未广播”或普通 TCP/Token 路径。
+- 根因已由生产代码与 Android 官方实现交叉确认：Android `NsdService` 为历史兼容把发现回调类型表示为尾点形式，把解析成功类型表示为**前导点**形式；真实 resolved 类型为 `._sayit-watch._tcp`。当前 `DiscoveryPolicy.isOurServiceType()` 仅处理尾点、`.local` 与大小写，拒绝该官方形态；227 项测试的变体列表也漏掉前导点，因而自动化误绿。
+- 同范围 R10 返修包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R10.md`。只允许修服务类型规范化/必要的 Android 映射、真实生产链回归和 Watch dev.3/code 7；Windows R9 包保持不变。**R9 真机自动发现判定 NO-GO，阶段 12 不关闭。**
+
+## R9 PM 源码/构建验收 GO；等待真机与双电脑 A-H（2026-09-22，已被上节真机结果更新）
+
+- D 的 R9 最终产品提交为 `e33b5361c3517f35d75bf210bfc1077d4f730658`，回传提交为 `0839b38`，工作树干净。相对 R8 基线仅改 2 个 Watch 产品文件、3 个 Watch 测试文件、1 个便携脚本以及 R9 任务/回传文档；未改 mDNS 协议、ASR、History、Paste、录音、正式 Release 或视觉布局。
+- PM 源码增量审核确认：`NonCancellable`、`runBlocking` 和 1.5 秒超时后并发启动均已移除；连接任务由非阻塞命令队列串行交接，旧回合完成取消/等待后才启动替代回合；健康探针失败后果由当前回合和前台状态门控。R9 的后台探针、阻塞探针换机、2 秒慢停止、取消后两个真实健康周期与实际说明产物用例均存在于真实 ViewModel→Owner→Resolver→Coordinator 链。`pending` 仍是未实际承载意图的可见字段，调度器注释对“唯一写入者”的表述也比实现更绝对；本轮作为非阻断清理项记录，不影响上述核心串行门槛。
+- PM 在最终头独立执行 `gradlew.bat testDebugUnitTest --rerun-tasks lintDebug assembleDebug --console=plain`，退出码 0：24 suites / **227 tests / 0 failures / 0 errors / 0 skipped**，lint **0 error / 37 warnings**，Debug APK SHA-256 `DAF765735C9A6EFF6D699608523FA8F2F902CCCCD1429C7E81C826A33045E318`，与回传一致。`cargo test watch_receiver` 仍在 PM 主机的既有 `transcribe-cpp-sys` CMake/MSBuild 缓存处以 `FTK1011` 退出 1，未进入 Rust 测试；D 的 62/62 只保留为执行者证据。
+- 统一 ZIP `F3487B7385C0FA8637332C5BCCEA2A1F5EB08318A80B8B0905736022093749EE` 经 PM 独立解压，28 条 `SHA256SUMS` 全部一致，包内 EXE `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`，`BUILD-INFO.git_head=e33b536`，说明控制字符 0。后续已按用户授权完成启动，当前运行证据与真机结论见本文件顶部。
+- **历史分层结论：R9 源码/自动化/静态便携包 GO，可以进入设备验收；阶段 10 正式 Release 与阶段 12 双电脑端到端均未关闭。** 用户提供新端点 `192.168.12.126:34239` 后，PM 重新连接 Galaxy Watch 7。升级后遗留的旧应用进程第一次启动/停止均超时且一度拒绝退出；`am force-stop` 等旧 PID 真正消失后再次冷启动成功（`LaunchState: COLD`，约 1.6 秒），证明 R9 本身不持续黑屏。真实 R9 界面为“正在连接…”，保存地址探针被拒绝后按约定进入 8 秒 mDNS 浏览；连续三轮均为 `saved-probe:rejected → browse:started → browse:no-candidate → verdict:none`，约 5 秒后自动重试，说明晚启动重试循环在真机上运行。随后启动同一 R9 便携包取得的失败结论与根因见本文件顶部；本段不再代表当前验收状态。
+
+## R8 PM 验收 NO-GO；当前返修 1C-D-04@R9（2026-09-22，待发送）
+
+- D 的 R8 交付头 `8149d34c9aeb69b63806ab183b0a2615f9f274b8`，工作树干净，范围为 8 个产品/测试/脚本路径和回传文档。便携 ZIP `12CCD863D787A902A803C55A56117B3E49BE5C65CD78A45987F5EA3945CDBCC2` 独立解压后 28 条 SHA256SUMS 全部一致；包内 EXE `FAF1F984E53910F43E613B9A28B2224E3F009882DA8C000E387FFE0CF4B6542E`，`BUILD-INFO.git_head=50c1e52`，说明控制字符 0。该静态包证据通过，但未启动、未安装、未替换用户软件。
+- PM 独立全量 Watch 在最终头失败：`ConnectionLifecycleR8Test` 要求“手表访问令牌”，最终脚本只有英文 `watch access token`；D 的 221/221 证据早于后续三个打包脚本修正，不能代表交付头。Rust 仍被既有 `transcribe-cpp-sys` FTK1011 缓存错误阻断。
+- 源码继续阻断：健康探针仍在 `NonCancellable` 中，真实最长 3 秒而取消只等 1.5 秒；后台/替代意图返回后旧探针仍能修改目标/UI。`joinBounded()` 还在 UI 路径 `runBlocking`，超时后照常启动新 Job，不满足真正 cancel-and-join。切换后“跨多个健康周期”测试实际 60 秒周期只等待 700 ms，也未覆盖要求。
+- 同范围 R9 包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R9.md`。冻结为非阻塞单 actor/command owner、可取消/代际隔离探针、慢取消真实回归和最终产品 SHA 证据。当前待发送，阶段 10/12 仍未通过。
+
+## R7 PM 验收 NO-GO；返修 1C-D-04@R8（2026-09-20，已发送；2026-09-22 交付后失败）
+
+- D 的 R7 交付头 `89cedd04bda3609e2286c92172fafbc896d640b8`，工作树干净。PM 独立复跑 Watch：210/210、lint、Debug build 退出码 0；APK SHA-256 `94833AE084EB29845B5554ACD1E79D922F59381D4C490BC78FDDA1D0F141E717`。统一 ZIP SHA-256 `86A37BF63F1BDF8CEC542CC82DE5278454F97BFA43C5DE060E1CE47D8A4294F5`，从 ZIP 独立解压得到 EXE `F12D28C90A8DA62BB03CFE53127186B20AB3F87295F1E404A7C3D889F334AB92`，28 条 SHA256SUMS 全部一致。Rust 新编译受本机既有 transcribe CMake 缓存失败阻断；D 报告的 live-multicast 用例亦未通过。
+- 源码阻断：切换开始使用 `resolver.onTargetInvalidated()`，在 Resolver 内清掉当前目标，造成 Resolver 与 UI 目标分裂；已连接健康探针结束后固定进入完整 SEARCH，每周期再次清目标；取消 picker、cancel-and-join、后台探针和上传后前台状态亦未封闭。便携包 MissingConfig 提示指向不存在的 Watch Token 设置，README 还有控制字符，BUILD-INFO 记录的是产品提交前的 `d32821c`。因此不安装 R7 APK、不替换桌面软件，R7 核心验收失败。
+- 同范围 R8 包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R8.md`。只修保持当前目标、已连接只健康探针、取消/后台/任务串行，以及便携提示和可追溯重建；晚启动与 R7 视觉成果须保留。PM 任务包提交 `ee7f5fa`；已于 21:29 在 D 原对话点击可见“发送消息”按钮，消息入列并显示“深度求索中…”。当前为 D 返修中，阶段 10/12 均未通过。
+
+## 当前有效返修：1C-D-04@R7（2026-09-20，已发送，D 执行中）
+
+- 用户批准统一便携包与连接全流程返修。唯一任务包：`docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R7.md`；上一 D 版本 R6，继承 PM UI R4。产品基线 main `17e59afde86ccf971b3d6ef1e777f841dece7224`，开发分支 `codex/watch-connection-r7`，工作树 `C:/Users/suzix/Documents/ChatGPT/SayIt-Watch-sync`；旧 `../Saylt` 不再写产品源码。
+- 本轮范围：前台晚启动/重试/失效恢复，搜索单任务与显式点选，当前 IP 和简洁设置显示，同一份自包含 Windows Debug 测试便携包。任务包明确范围、A–H 场景、证据和回滚；D 开发，PM 独立装机/双电脑验收。
+- PM 任务包提交 `371ddc3351449a45044eb6d1879442ec99c11f19`。已在本地 D 原对话「Saylt V2」点击可见“发送消息”按钮；消息 16:12 入列，界面显示“深度求索中…”和“停止生成”。已交接产品写入给 D；本条为派发事实，不是 D 交付或验收通过。阶段 12 与统一包均未完成，既有 UI R4 局部证据保留。
+
 ## 原仓库 main 已同步（2026-09-20）
 
 - 用户确认同步到原有公开仓库 `Suzixuan/SayIt-Watch`（原名 `SayIt-watch-local`）。分支 `codex/watch-sync-20260920` 从原 `main` 的 `4b5bf7e1be7b75c7074ba105ae12099de8ece813` 建立，按文件导入已审核的 Delivery 1C、R4 UI、README 与证据；保留原历史和原仓库已有文件。此前误建的私有仓库不再作为同步目标。

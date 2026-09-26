@@ -132,15 +132,22 @@ class RecordingEntryGuardTest {
         )
         val ready = bodyOf("fun onReadyEntered")
         assertTrue("Ready entry must ask the resolver: $ready", ready.contains("resolver."))
+        // 1C-D-04@R7 §2A: the "should a run start" decision moved from the engine's
+        // `acceptsAutomatic` into the single task owner, so the guard is now that Ready
+        // entry delegates instead of resolving on its own.
         assertTrue(
             "Ready entry must not start a run unconditionally: $ready",
-            ready.contains("acceptsAutomatic"),
+            ready.contains("resolver.hasVerifiedTarget"),
+        )
+        assertTrue(
+            "Ready entry must delegate the round to the single task owner: $ready",
+            ready.contains("taskOwner.requestRefresh("),
         )
 
         val start = bodyOf("fun startDiscovery")
         assertTrue(
-            "explicit re-resolution must release the old target first: $start",
-            start.contains("onTargetInvalidated"),
+            "explicit re-resolution must restart the newest round: $start",
+            start.contains("taskOwner.restartNow("),
         )
 
         val config = bodyOf("fun openConfig")
@@ -157,11 +164,16 @@ class RecordingEntryGuardTest {
         val manual = applySettings.substring(applySettings.indexOf("resolver.onManualRequested"))
         assertTrue(
             "only a verified target may be accepted: $manual",
-            manual.contains("resolver.verifiedTarget == candidate"),
+            manual.contains("resolver.verifiedTarget == manualCandidate"),
         )
         assertFalse(
             "applySettings must not write the destination itself: $manual",
             manual.contains("settings.receiverIp ="),
+        )
+        // 1C-D-04@R7 §2B: an UNCHANGED submission must not tear the connection down.
+        assertTrue(
+            "an unchanged form must keep the computer in use: $applySettings",
+            applySettings.contains("unchanged"),
         )
     }
 

@@ -20,23 +20,87 @@ pub mod wav;
 
 use std::sync::Arc;
 
-/// Starts the debug receiver on a dedicated blocking thread. Returns an error
-/// (receiver does not start) when configuration is missing or invalid.
-/// Never logs the token.
-pub fn start() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = Arc::new(config::load()?);
-    let thread_cfg = Arc::clone(&cfg);
+/// Why the debug receiver could not start, in the only two forms a user can act on.
+///
+/// 1C-D-04@R7 §2C: a receiver that silently does not start (and only writes a log line) is
+/// indistinguishable from a working one for the user. These variants carry a short, safe,
+/// actionable sentence — never a config value, a token, a path or a raw OS error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiverStartError {
+    /// No usable local connection configuration was found.
+    MissingConfig,
+    /// The configured address/port could not be bound (usually already in use).
+    BindFailed,
+}
+
+impl ReceiverStartError {
+    /// The user-facing sentence shown by the app: short, actionable, and free of any
+    /// configuration VALUE, token, raw OS error or non-existent UI destination.
+    ///
+    /// 1C-D-04@R8 P1: the previous wording told the user to fill the Watch token in "SayIt 设置".
+    /// That entry does not exist in this repository — the desktop app's token field configures a
+    /// different feature — so the message now names the only real source: the receiver
+    /// configuration file, whose presence is a per-PC setup step this package never performs for
+    /// the user.
+    pub fn user_message(self) -> &'static str {
+        match self {
+            ReceiverStartError::MissingConfig => {
+                "本机还没有手表接收配置，手表传输无法启动。\n\
+                 配置路径：%LOCALAPPDATA%\\com.sayit.app\\watch-receiver.config.json\n\
+                 请在该文件里填入手表访问令牌后重新打开本程序。该文件由本机自己维护，\
+                 不会自动生成，也不会随安装包分发。"
+            }
+            ReceiverStartError::BindFailed => {
+                "手表接收端口无法绑定：可能已被其它程序占用。\n\
+                 请关闭占用该端口的程序后重试；本程序不会结束任何现有进程。"
+            }
+        }
+    }
+
+    /// A stable, non-secret identifier for logs and tests.
+    pub fn category(self) -> &'static str {
+        match self {
+            ReceiverStartError::MissingConfig => "watch-receiver:config-missing",
+            ReceiverStartError::BindFailed => "watch-receiver:bind-failed",
+        }
+    }
+}
+
+impl std::fmt::Display for ReceiverStartError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.category())
+    }
+}
+
+impl std::error::Error for ReceiverStartError {}
+
+/// Starts the debug receiver. Returns an error (receiver does not start) when
+/// configuration is missing or invalid, or when the configured address cannot be
+/// bound. Never logs or returns the token.
+///
+/// 1C-D-04@R7 §2C: the bind happens on the CALLER's thread, so a failure is known
+/// before this function returns and the app can show it to the user instead of
+/// discovering it only in a log. The accept loop still runs on its own thread.
+pub fn start() -> Result<(), ReceiverStartError> {
+    let cfg = Arc::new(config::load().map_err(|e| {
+        log::error!("watch receiver not started: {}", e);
+        ReceiverStartError::MissingConfig
+    })?);
+
+    // Kept verbatim: the release-guard test pins that mDNS registration happens only
+    // after this bind succeeded, under the debug gate.
+    let server = match server::ReceiverServer::start(Arc::clone(&cfg)) {
+        Ok(s) => s,
+        Err(e) => {
+            // The raw error may embed the address; only the category is logged.
+            log::error!("watch receiver failed to bind: {}", e);
+            return Err(ReceiverStartError::BindFailed);
+        }
+    };
+
     std::thread::Builder::new()
         .name("watch-receiver".to_string())
         .spawn(move || {
-            // tiny_http is fully blocking; the accept loop lives on this thread.
-            let server = match server::ReceiverServer::start(thread_cfg) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::error!("watch receiver failed to start: {}", e);
-                    return;
-                }
-            };
             log::info!(
                 "watch receiver listening on {}:{} (dev token present: {})",
                 server.bind_ip(),
@@ -47,7 +111,12 @@ pub fn start() -> Result<(), Box<dyn std::error::Error>> {
             // so the Watch can never discover an address that is not listening.
             #[cfg(debug_assertions)]
             mdns::spawn_registration(&cfg);
+            // tiny_http is fully blocking; the accept loop lives on this thread.
             server.run();
+        })
+        .map_err(|e| {
+            log::error!("watch receiver thread failed to start: {}", e);
+            ReceiverStartError::BindFailed
         })?;
     Ok(())
 }
@@ -151,7 +220,7 @@ mod tests {
         let mod_src = fs::read_to_string("src/watch_receiver/mod.rs")
             .expect("watch_receiver/mod.rs must exist");
         let bind_pos = mod_src
-            .find("let server = match server::ReceiverServer::start(thread_cfg)")
+            .find("let server = match server::ReceiverServer::start(")
             .expect("the receiver must bind through ReceiverServer::start");
         let register_pos = mod_src
             .find("mdns::spawn_registration(&cfg)")
@@ -164,6 +233,132 @@ mod tests {
         assert!(
             window.contains("#[cfg(debug_assertions)]"),
             "the mDNS registration call must be guarded by #[cfg(debug_assertions)]"
+        );
+    }
+
+    // ─── 1C-D-04@R7 §2C: startup failures must be visible and safe ───────────
+
+    #[test]
+    fn startup_failure_messages_are_short_actionable_and_secret_free() {
+        for error in [
+            super::ReceiverStartError::MissingConfig,
+            super::ReceiverStartError::BindFailed,
+        ] {
+            let message = error.user_message();
+            assert!(!message.is_empty(), "a failure needs a visible sentence");
+            assert!(
+                message.chars().count() <= 220,
+                "the visible message must stay short: {message}"
+            );
+            // Never echo a configuration VALUE, a token, a raw OS error or an unrelated feature.
+            for forbidden in [
+                "token=",
+                "SAYIT_WATCH_DEV_TOKEN",
+                "18099",
+                "192.168",
+                "os error",
+                "Microsoft",
+                "Bearer",
+                // 1C-D-04@R8 P1: this entry does not exist; pointing the user at it is a defect.
+                "SayIt 设置",
+                "服务器访问令牌",
+            ] {
+                assert!(
+                    !message.contains(forbidden),
+                    "the visible message must not contain {forbidden:?}: {message}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn missing_config_points_at_the_real_receiver_config_file() {
+        // 1C-D-04@R8 P1: the only actionable destination is the receiver configuration file. The
+        // message must name it, and must NOT tell the user to use the desktop "设置" entry (which
+        // configures a different feature and cannot set this token).
+        let message = super::ReceiverStartError::MissingConfig.user_message();
+        assert!(
+            message.contains("%LOCALAPPDATA%\\com.sayit.app\\watch-receiver.config.json"),
+            "the missing-config notice must name the real config path: {message}"
+        );
+        assert!(
+            message.contains("手表访问令牌"),
+            "the notice must name what has to be filled in: {message}"
+        );
+        assert!(
+            !message.contains("设置"),
+            "the notice must not point at a settings entry that does not exist: {message}"
+        );
+        // The path is a template, never this machine's expanded value, and the file content is
+        // never shown.
+        assert!(!message.contains("C:\\Users"));
+        assert!(!message.contains("devToken"));
+    }
+
+    #[test]
+    fn startup_failure_categories_are_distinct_and_stable() {
+        assert_ne!(
+            super::ReceiverStartError::MissingConfig.category(),
+            super::ReceiverStartError::BindFailed.category(),
+        );
+        assert_eq!(
+            super::ReceiverStartError::MissingConfig.category(),
+            "watch-receiver:config-missing"
+        );
+        assert_eq!(
+            super::ReceiverStartError::BindFailed.category(),
+            "watch-receiver:bind-failed"
+        );
+        // Display must be the category, so a log line can never carry a config value.
+        assert_eq!(
+            super::ReceiverStartError::BindFailed.to_string(),
+            "watch-receiver:bind-failed"
+        );
+    }
+
+    #[test]
+    fn a_missing_configuration_is_reported_as_missing_config_not_a_bind_failure() {
+        // The two variants exist because the user's action differs. This pins the mapping
+        // in `start()`: `config::load()` failure -> MissingConfig.
+        let mod_src = fs::read_to_string("src/watch_receiver/mod.rs")
+            .expect("watch_receiver/mod.rs must exist");
+        let load_pos = mod_src
+            .find("config::load().map_err(")
+            .expect("start() must classify a config load failure");
+        let window = &mod_src[load_pos..(load_pos + 260).min(mod_src.len())];
+        assert!(
+            window.contains("ReceiverStartError::MissingConfig"),
+            "a config load failure must map to MissingConfig"
+        );
+        let bind_pos = mod_src
+            .find("server::ReceiverServer::start(Arc::clone(&cfg))")
+            .expect("start() must bind the configured address");
+        let bind_window = &mod_src[bind_pos..(bind_pos + 320).min(mod_src.len())];
+        assert!(
+            bind_window.contains("ReceiverStartError::BindFailed"),
+            "a bind failure must map to BindFailed"
+        );
+    }
+
+    #[test]
+    fn the_receiver_reports_a_start_failure_instead_of_only_logging_it() {
+        // The defect this closes: the old `start()` swallowed a bind failure inside the
+        // spawned thread and returned Ok, so the app could not show anything.
+        let mod_src = fs::read_to_string("src/watch_receiver/mod.rs")
+            .expect("watch_receiver/mod.rs must exist");
+        let start = mod_src
+            .split("pub fn start() -> Result<(), ReceiverStartError> {")
+            .nth(1)
+            .expect("start() must return the typed error");
+        let bind_pos = start
+            .find("ReceiverServer::start(")
+            .expect("start() must bind before spawning");
+        let spawn_pos = start
+            .find("std::thread::Builder::new()")
+            .expect("start() must still run the accept loop on its own thread");
+        assert!(
+            bind_pos < spawn_pos,
+            "the bind must happen on the caller's thread so a failure is returned, not logged"
         );
     }
 }

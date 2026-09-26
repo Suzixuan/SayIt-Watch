@@ -294,6 +294,25 @@ class DiscoveryCoordinator(
     }
 
     /**
+     * 1C-D-04@R8 P0-A — stops an in-flight browse and invalidates its result WITHOUT dropping
+     * the endpoint authenticated in this session.
+     *
+     * `stop()` is the "the connection is over" path (it clears `resolved`). This is the
+     * hand-over path used before an explicit switch browse: the old browse/NSD session must be
+     * gone before a new listener opens, but the computer the user is on must survive, so the
+     * engine, the bridge, the ViewModel's target and the recording gate keep agreeing.
+     */
+    fun stopBrowseOnly() {
+        synchronized(runLock) {
+            runCounter++
+            inFlight?.cancel()
+            inFlight = null
+            stopBrowser?.invoke()
+            stopBrowser = null
+        }
+    }
+
+    /**
      * Authenticated probe of one explicit destination (the manual IP/port path),
      * bounded by the same saved-address phase budget. Never browses and never
      * writes settings.
@@ -967,6 +986,34 @@ class ResolverEngine(
         hasVerifiedTarget = true
     }
 
+    /**
+     * 1C-D-04@R8 P0-A — ends the automatic run WITHOUT touching the verified target.
+     *
+     * `cancelLocked()` (used by `onConfigEntered` / `onTargetInvalidated`) clears the target,
+     * which is right when the connection is genuinely gone and wrong when the resolution is
+     * merely being handed over (an explicit switch browse). This variant bumps the generation —
+     * so a late result from the cancelled run can never land — and leaves the authenticated
+     * target in place, which keeps one single source of truth across the engine, the bridge, the
+     * ViewModel and the recording gate.
+     */
+    fun cancelAutomaticRunKeepTarget() {
+        generationCounter++
+        mode = ResolverMode.Idle
+        onCancelAutomatic()
+    }
+
+    /**
+     * Releases the automatic run without touching the verified target. Used when a browse ends
+     * and the resolution is no longer owned, while the computer in use must survive (an explicit
+     * switch that was cancelled or that found nothing).
+     */
+    fun releaseAutomaticRun() {
+        if (mode is ResolverMode.Automatic) {
+            generationCounter++
+            mode = ResolverMode.Idle
+        }
+    }
+
     /** Bumps the generation and drops the target so late results cannot land. */
     private fun cancelLocked() {
         generationCounter++
@@ -1023,6 +1070,12 @@ class ResolverBridge(
     private val persistManual: (DiscoverySelection) -> Unit = {},
     /** Runs the explicit switch browse; `null` means no collector is attached. */
     private val executeSwitch: suspend (runId: Long) -> List<DiscoverySelection>? = { null },
+    /**
+     * Confirms ONE candidate before the user's explicit pick adopts it. It is deliberately
+     * separate from [executeAutomatic]: confirming a pick must not disturb the target in use
+     * (the default would stop the coordinator's run and clear the stored destination).
+     */
+    private val executePickProbe: suspend (candidate: DiscoverySelection) -> Boolean = { false },
 ) {
 
     private val engine = ResolverEngine(onCancelAutomatic = { stopAutomatic() })
@@ -1098,6 +1151,84 @@ class ResolverBridge(
     val isPickerOpen: Boolean get() = pickerOpen
 
     /**
+     * 1C-D-04@R7 必修 — re-authenticates a computer before it becomes the target.
+     *
+     * A historical candidate may have gone away (its address is reassigned, the PC
+     * sleeps). Adopting it from the remembered list without asking again would show a
+     * connection that does not exist, so the pick is confirmed with one bounded
+     * authenticated probe first; a failure changes nothing and writes no setting.
+     */
+    sealed class PickResult {
+        /** The candidate answered the probe and is now the target. */
+        data class Adopted(val target: DiscoverySelection) : PickResult()
+
+        /** The candidate did not authenticate: the current target is untouched. */
+        object Refused : PickResult()
+
+        /** A newer pick or a cancel superseded this one: nothing changed. */
+        object Superseded : PickResult()
+    }
+
+    /** Bumped by [pick] so a superseded probe cannot adopt afterwards. */
+    @Volatile
+    private var pickGeneration: Long = 0L
+
+    /**
+     * 1C-D-04@R7 必修 1/2 — the user explicitly picked a computer.
+     *
+     * The endpoint must already be in [knownTargets] (this session authenticated it),
+     * and it is probed once more before adoption. The current target is replaced only
+     * on that success; a refusal or a superseded probe leaves everything as it was.
+     */
+    suspend fun pick(candidate: DiscoverySelection): PickResult {
+        val allowed = knownTargets.contains(candidate) || engine.verifiedTarget == candidate
+        if (!allowed) return PickResult.Refused
+        pickerOpen = false
+        // Already the target in use and still healthy: nothing to re-verify.
+        if (engine.verifiedTarget == candidate) {
+            engine.stateAdoptedByUser(candidate)
+            lastPublishedState = DiscoveryState.Discovered
+            return PickResult.Adopted(candidate)
+        }
+        val generation = ++pickGeneration
+        if (!isValidToken()) return PickResult.Refused
+        val ok = executePickProbe(candidate)
+        if (generation != pickGeneration) return PickResult.Superseded
+        if (!ok) {
+            lastPublishedState =
+                if (engine.hasVerifiedTarget) DiscoveryState.Discovered else DiscoveryState.ManualFallback
+            return PickResult.Refused
+        }
+        // Adopt without touching the automatic run: the probe above is the confirmation,
+        // and `stateAdoptedByUser` bumps the generation so no late result can land on top.
+        engine.stateAdoptedByUser(candidate)
+        mergeKnown(listOf(candidate))
+        persistManual(candidate)
+        lastPublishedState = DiscoveryState.Discovered
+        return PickResult.Adopted(candidate)
+    }
+
+    /** Cancels a pick that is still probing: its result must not be adopted. */
+    fun cancelPendingPick() {
+        pickGeneration++
+    }
+
+    /**
+     * The computers the open picker offers: every computer authenticated in this
+     * session, with the one in use first so it is always visible.
+     */
+    val pickerCandidates: List<DiscoverySelection>
+        get() {
+            val out = LinkedHashSet<DiscoverySelection>()
+            engine.verifiedTarget?.let { out.add(it) }
+            out.addAll(knownTargets)
+            return out.toList()
+        }
+
+    /** The computer in use, even when it is not (or no longer) in the browse list. */
+    val currentTarget: DiscoverySelection? get() = engine.verifiedTarget
+
+    /**
      * Opens the picker: snapshots the authenticated computers. Returns nothing to
      * adopt — an ordinary automatic run must first SUPERSEDE the previous target and
      * verified state, which is the caller's Ready-entry decision, not the switch's.
@@ -1106,60 +1237,48 @@ class ResolverBridge(
         pickerOpen = true
     }
 
-    /** Closes the picker without changing the target. */
+    /** Closes the picker without changing the target. Idempotent. */
     fun cancelPicker() {
         pickerOpen = false
+        cancelPendingPick()
     }
 
     /**
-     * 1C-D-04@R3 必修 1: applies the explicit browse result.
+     * 1C-D-04@R7 必修 2 — applies the explicit browse result.
      *
-     * @return the single newly authenticated computer to adopt, or null when none or
-     *   several were found (the picker then offers [knownTargets] and the manual
-     *   fallback). ["采用本轮已认证目标"] is preserved: only a value returned here or
-     *   listed in [knownTargets] may ever be picked.
+     * R4/R5/R6 adopted the single newly found computer here. R7's contract forbids
+     * that: an explicit switch must ALWAYS show the candidates so the user picks,
+     * including when exactly one new computer was found. This method therefore only
+     * merges what authenticated and refreshes the picker — it never adopts.
+     *
+     * The computer in use is preserved deliberately. It is not re-probed inside the
+     * browse, so "did not appear in this 8 s window" is not evidence that it is gone;
+     * the bounded idle health check is what decides that (1C-D-04@R7 §2A).
      */
-    suspend fun handleSwitchBrowse(runId: Long): DiscoverySelection? {
+    suspend fun handleSwitchBrowse(runId: Long): List<DiscoverySelection> {
         val action = engine.onReadyEntered(force = true)
         if (action !is ResolverAction.StartAutomatic) {
             endPickerSearch()
-            return null
+            return emptyList()
         }
         val generation = action.generation
         if (!isValidToken()) {
             endPickerSearch()
-            return null
+            return emptyList()
         }
-        val collected = executeSwitch(runId) ?: run {
+        val collected = executeSwitch(runId)
+        if (collected != null) mergeKnown(collected)
+        if (!engine.isCurrentAutomaticRun(generation)) {
             endPickerSearch()
-            return null
+            return emptyList()
         }
-        mergeKnown(collected)
-        if (!engine.isCurrentAutomaticRun(generation)) return null
-        val offered = collected.filter { it != engine.verifiedTarget }
-        val only = offered.singleOrNull()
-        // 1C-D-04@R4 必修 1: "the search is over" and "the user has a target" are
-        // different transitions and must never be merged.
-        //
-        // R3 wrote `engine.verifiedTarget ?: only ?: collected.firstOrNull()` and then
-        // adopted that value. With NO current target and TWO authenticated computers it
-        // silently adopted the first one internally, so a later Ready entry could turn
-        // that hidden pick into an upload target and bypass the picker entirely. An
-        // implicit pick by discovery order is exactly what the contract forbids.
-        //
-        // Now: adopt ONLY when there was a current target to keep, or when the search
-        // produced the unique offered candidate. Otherwise the resolution is released
-        // to Idle with the target left NULL and the picker offers every authenticated
-        // computer.
-        val keep = engine.verifiedTarget ?: only
-        if (keep != null) {
-            engine.stateAdoptedByUser(keep)
-        } else {
-            engine.onConfigEntered()
-        }
-        lastPublishedState = if (only != null) DiscoveryState.Discovered else DiscoveryState.ManualFallback
+        // "The search is over" and "the user has a target" are different transitions
+        // and are never merged (1C-D-04@R4 必修 1): the resolution is released to Idle
+        // and the target stays exactly as it was.
         endPickerSearch()
-        return only
+        lastPublishedState =
+            if (engine.hasVerifiedTarget) DiscoveryState.Discovered else DiscoveryState.ManualFallback
+        return collected ?: emptyList()
     }
 
     /**
@@ -1167,22 +1286,9 @@ class ResolverBridge(
      * resolution any more.
      */
     private fun endPickerSearch() {
-        if (engine.mode is ResolverMode.Automatic) engine.onConfigEntered()
-    }
-
-    /**
-     * The user picked a computer from the picker. Returns the selection to adopt, or
-     * null when it is not an authenticated one (refused, nothing changes).
-     */
-    fun pick(candidate: DiscoverySelection): DiscoverySelection? {
-        val allowed = knownTargets.contains(candidate)
-        pickerOpen = false
-        if (!allowed) return null
-        engine.onConfigEntered()
-        engine.stateAdoptedByUser(candidate)
-        persistManual(candidate)
-        lastPublishedState = DiscoveryState.Discovered
-        return candidate
+        // 1C-D-04@R7 必修 2: the browse is finished, but "the search is over" must NOT clear
+        // the computer in use — cancelling the picker has to leave it selected and usable.
+        engine.releaseAutomaticRun()
     }
 
     /**
@@ -1193,7 +1299,7 @@ class ResolverBridge(
      * Kept as the low-level entry used by tests and by [handleSwitchBrowse]; it is
      * [handleSwitchBrowse] that owns the picker/list bookkeeping.
      */
-    suspend fun onSwitchBrowse(runId: Long): DiscoverySelection? = handleSwitchBrowse(runId)
+    suspend fun onSwitchBrowse(runId: Long): List<DiscoverySelection> = handleSwitchBrowse(runId)
 
     /** Opens Config: an automatic run no longer owns the resolution. */
     fun onConfigEntered() {
@@ -1251,6 +1357,20 @@ class ResolverBridge(
     fun onTargetInvalidated() {
         engine.onTargetInvalidated()
         lastPublishedState = null
+    }
+
+    /**
+     * 1C-D-04@R8 P0-A — releases the automatic run and stops the transport while KEEPING the
+     * computer in use.
+     *
+     * Used when the resolution is handed over (an explicit switch browse) as opposed to
+     * cancelled because the connection is gone. The engine's generation is bumped so a late
+     * result cannot publish, the transport is stopped so the old browse/NSD session really ends,
+     * and `verifiedTarget`/`hasVerifiedTarget` are left untouched — the UI, the ViewModel's
+     * `verifiedDestination` and the recording gate therefore keep describing the same computer.
+     */
+    fun releaseAutomaticRunKeepTarget() {
+        engine.cancelAutomaticRunKeepTarget()
     }
 
     /** Screen/ViewModel teardown. */
@@ -1338,7 +1458,8 @@ class ResolverBridge(
             executeManual = { candidate, _ -> coordinator?.probeCandidate(candidate) ?: false },
             stopAutomatic = { coordinator?.stop() },
             persistManual = { coordinator?.adopt(it) },
-            executeSwitch = { runId -> coordinator?.collectAndSelect() }
+            executeSwitch = { runId -> coordinator?.collectAndSelect() },
+            executePickProbe = { candidate -> coordinator?.probeCandidate(candidate) ?: false },
         )
     }
 }

@@ -169,18 +169,57 @@ class DiscoverySwitchFlowR3Test {
             )
         }
 
-        /** Runs one switch and waits for the launched browse to settle. */
+        /**
+         * Runs one switch and waits for the launched browse to settle.
+         *
+         * 1C-D-04@R7: the round is started by the connection task owner, so the browse
+         * may not have opened yet when this is called — the wait is therefore
+         * condition-driven rather than assuming the browse is already in flight.
+         */
         fun switchAndWait(timeoutMs: Long = 20_000L) {
             viewModel.requestSwitch()
             val deadline = System.currentTimeMillis() + timeoutMs
+            var sawBrowse = false
             while (System.currentTimeMillis() < deadline) {
-                if (!coordinator.isRunning && !viewModel.ui.value.switchSearching) {
+                if (viewModel.ui.value.switchSearching && coordinator.isRunning) {
+                    sawBrowse = true
+                }
+                // The browse is settled only when BOTH the transport and the owner's round are
+                // done. 1C-D-04@R8: without the owner check this returned during the hand-off's
+                // cancellation window, which made later count assertions timing-dependent.
+                if (sawBrowse && !coordinator.isRunning && !viewModel.ui.value.switchSearching) {
                     Thread.sleep(40)
-                    if (!coordinator.isRunning) return
+                    if (!coordinator.isRunning && !viewModel.isConnectionTaskRunningForTest) return
+                }
+                if (!sawBrowse && !coordinator.isRunning && !viewModel.isConnectionTaskRunningForTest) {
+                    Thread.sleep(40)
+                    if (!coordinator.isRunning && !viewModel.isConnectionTaskRunningForTest) return
                 }
                 Thread.sleep(10)
             }
             assertFalse("the switch browse must finish inside its budget", coordinator.isRunning)
+        }
+
+        /**
+         * 1C-D-04@R7: the user taps a row. The pick re-authenticates the candidate before
+         * adoption, so it is asynchronous and needs a bounded wait. The picker closing is
+         * the terminal signal for BOTH an adoption and a refusal.
+         */
+        fun pickAndWait(candidate: DiscoverySelection, timeoutMs: Long = 15_000L, expectAdopted: Boolean = true) {
+            viewModel.onTargetPicked(candidate)
+            val deadline = System.currentTimeMillis() + timeoutMs
+            while (System.currentTimeMillis() < deadline) {
+                // A pick is only complete once the picker has CLOSED and the target is
+                // applied: `applyTargetChoice` publishes the destination before the
+                // picker-close event, and closing is what the user sees.
+                if (!viewModel.ui.value.switchOpen) {
+                    if (viewModel.currentDestination() == candidate) return
+                    if (!expectAdopted) return
+                    assertEquals("the user's pick must be adopted", candidate, viewModel.currentDestination())
+                }
+                Thread.sleep(10)
+            }
+            assertEquals("the user's pick must be adopted", candidate, viewModel.currentDestination())
         }
     }
 
@@ -195,23 +234,37 @@ class DiscoverySwitchFlowR3Test {
     // ── 必修 1: the first switch must be adoptable ────────────────────────────
 
     @Test
-    fun `the real switch entry point adopts the first newly discovered computer`() {
+    fun `the real switch entry point offers the first newly discovered computer for an explicit pick`() {
         val h = harness(savedIp = oldPc.ip)
         // The old computer is in use.
-        h.viewModel.onReadyEntered()
+        h.viewModel.onForeground()
         waitForTarget(h, oldPc)
+        // 1C-D-04@R7: the automatic loop would supersede the explicit switch, so pause it
+        // while this test measures that one browse (production pauses the same way for a
+        // transfer).
+        h.viewModel.pauseConnectionTaskForTest()
 
         // The user taps 切换电脑 and exactly one NEW computer answers.
         h.discovery.next = listOf(realService(newPc.ip))
         h.switchAndWait()
 
+        // 1C-D-04@R7 必修 2: the browse offers; it never switches on its own.
         assertEquals(
-            "the first switch must not be rejected by a stale target list",
-            newPc,
+            "the browse must not switch the computer by itself",
+            oldPc,
             h.viewModel.currentDestination(),
         )
+        assertTrue(
+            "the newly authenticated computer must be offered for an explicit pick",
+            h.viewModel.switchEntries().any { it.target == newPc && !it.isCurrent },
+        )
+        assertTrue("the picker stays open for the user", h.viewModel.ui.value.switchOpen)
+
+        // Only the user's own tap switches.
+        h.viewModel.onTargetPicked(newPc)
+        waitUntil("the user's pick must be adopted") { h.viewModel.currentDestination() == newPc }
         assertEquals("the adopted computer must be persisted", newPc.ip to newPc.port, h.settings.lastSaved)
-        assertFalse("the picker must close after adopting", h.viewModel.ui.value.switchOpen)
+        assertFalse("the picker must close after picking", h.viewModel.ui.value.switchOpen)
         assertEquals(WatchUiState.Screen.READY, h.viewModel.ui.value.screen)
         assertTrue("recording must be enabled", h.viewModel.canRecord.value)
         assertEquals(
@@ -222,20 +275,42 @@ class DiscoverySwitchFlowR3Test {
     }
 
     @Test
-    fun `no current target and one new computer still adopts in one browse`() {
+    fun `no current target and one new computer is offered in one browse`() {
         val h = harness()
-        h.discovery.next = listOf(realService(newPc.ip))
-        h.switchAndWait()
+        // 1C-D-04@R8: the owner searches on its own while there is no target, so this test freezes
+        // it BEFORE the first round can browse. That is the only way "no candidate adopted" is a
+        // statement about the switch instead of a race with the recovery loop.
+        h.discovery.next = emptyList()
+        h.viewModel.onForeground()
+        h.viewModel.pauseConnectionTaskForTest()
+        val startsBefore = h.discovery.startCount
 
-        assertEquals(newPc, h.viewModel.currentDestination())
-        assertEquals(1, h.discovery.startCount)
+        h.discovery.next = listOf(realService(newPc.ip))
+        h.viewModel.requestSwitch()
+        waitUntil("the browse must be offered") {
+            h.viewModel.switchEntries().any { it.target == newPc }
+        }
+        assertEquals(
+            "the single candidate must be offered",
+            listOf(newPc),
+            h.viewModel.switchEntries().map { it.target },
+        )
+        assertNull("the browse itself must not adopt", h.viewModel.currentDestination())
+        assertEquals(
+            "the user's switch must be exactly one browse (no saved-address re-probe)",
+            startsBefore + 1,
+            h.discovery.startCount,
+        )
+
+        h.viewModel.onTargetPicked(newPc)
+        waitUntil("the user's pick must be adopted") { h.viewModel.currentDestination() == newPc }
         assertTrue(h.viewModel.canRecord.value)
     }
 
     @Test
     fun `the legacy target keeps working until the user confirms the switch`() {
         val h = harness(savedIp = oldPc.ip)
-        h.viewModel.onReadyEntered()
+        h.viewModel.onForeground()
         waitForTarget(h, oldPc)
 
         // The browse finds nothing new: the old target must survive untouched.
@@ -244,28 +319,35 @@ class DiscoverySwitchFlowR3Test {
         assertEquals("an empty switch must not clear the working target", oldPc, h.viewModel.currentDestination())
         assertTrue("recording stays possible on the old computer", h.viewModel.canRecord.value)
 
-        // A later browse does find a new one, and only then does the target change.
+        // A later browse does find a new one; only the user's own pick changes it.
         h.discovery.next = listOf(realService(newPc.ip))
         h.switchAndWait()
+        assertEquals("the browse must still not switch", oldPc, h.viewModel.currentDestination())
+        h.pickAndWait(newPc)
         assertEquals(newPc, h.viewModel.currentDestination())
     }
 
     @Test
     fun `two newly authenticated computers are offered and never chosen silently`() {
         val h = harness()
+        h.viewModel.onForeground()
         h.discovery.next = listOf(realService(oldPc.ip), realService(newPc.ip))
         h.switchAndWait()
+        // 1C-D-04@R7: the automatic loop keeps rounds running, so pause it before asserting
+        // on the picker this single browse produced (production pauses the same way while a
+        // transfer owns the transport).
+        h.viewModel.pauseConnectionTaskForTest()
 
         assertNull("an ambiguous browse must not adopt anything", h.viewModel.currentDestination())
         assertEquals(
             "both authenticated computers must be offered",
             setOf(oldPc, newPc),
-            h.viewModel.targets.value.toSet(),
+            h.viewModel.switchEntries().map { it.target }.toSet(),
         )
         assertTrue("the picker stays open for the user", h.viewModel.ui.value.switchOpen)
 
         // The user picks one: now, and only now, a target exists.
-        h.viewModel.onTargetPicked(newPc)
+        h.pickAndWait(newPc)
         assertEquals(newPc, h.viewModel.currentDestination())
         assertTrue(h.viewModel.canRecord.value)
         assertEquals(1, h.settings.savedCount)
@@ -274,6 +356,7 @@ class DiscoverySwitchFlowR3Test {
     @Test
     fun `an endpoint this session never authenticated can never be picked`() {
         val h = harness()
+        h.viewModel.onForeground()
         h.discovery.next = listOf(realService(oldPc.ip), realService(newPc.ip))
         h.switchAndWait()
 
@@ -287,13 +370,24 @@ class DiscoverySwitchFlowR3Test {
     @Test
     fun `dismissing the picker changes nothing and a second switch still works`() {
         val h = harness()
+        h.viewModel.onForeground()
         h.discovery.next = listOf(realService(newPc.ip))
         h.switchAndWait()
+        h.pickAndWait(newPc)
         assertEquals(newPc, h.viewModel.currentDestination())
         val savedAfterFirst = h.settings.savedCount
 
         h.viewModel.requestSwitch()
-        waitIdle(h)
+        // 1C-D-04@R7: wait for the browse this call started, not just for "nothing runs
+        // right now" — the round itself is handed to the task owner asynchronously.
+        waitUntil("the switch browse must run") { h.discovery.startCount > 0 }
+        waitUntil("the browse must settle") {
+            !h.viewModel.ui.value.switchSearching && !h.coordinator.isRunning
+        }
+        assertTrue(
+            "the browse must offer the computer again",
+            h.viewModel.switchEntries().any { it.target == newPc },
+        )
         h.viewModel.dismissSwitchPicker()
         assertFalse(h.viewModel.ui.value.switchOpen)
         assertEquals("dismissing must not change the target", newPc, h.viewModel.currentDestination())
@@ -305,6 +399,9 @@ class DiscoverySwitchFlowR3Test {
     @Test
     fun `a switch that finds nothing ends in the bounded fallback and can be retried`() {
         val h = harness()
+        h.viewModel.onForeground()
+        // The automatic recovery loop would open its own browse and blur this measurement.
+        h.viewModel.pauseConnectionTaskForTest()
         h.discovery.next = emptyList()
         h.switchAndWait()
 
@@ -315,7 +412,15 @@ class DiscoverySwitchFlowR3Test {
         // The engine must not be stuck owning the resolution: a retry works.
         h.discovery.next = listOf(realService(newPc.ip))
         h.viewModel.requestSwitch()
-        waitIdle(h)
+        waitUntil("the retry browse must offer the computer") {
+            h.viewModel.switchEntries().any { it.target == newPc }
+        }
+        assertEquals(
+            "a retry must offer the computer, not adopt it",
+            listOf(newPc),
+            h.viewModel.switchEntries().map { it.target },
+        )
+        h.pickAndWait(newPc)
         assertEquals(newPc, h.viewModel.currentDestination())
     }
 
@@ -337,8 +442,12 @@ class DiscoverySwitchFlowR3Test {
     @Test
     fun `re-entering Ready after a completed switch does not restart discovery`() {
         val h = harness()
+        // 1C-D-04@R7: establish the foreground BEFORE the switch, so the automatic round
+        // cannot clear the picker's authenticated list between the browse and the pick.
+        h.viewModel.onForeground()
         h.discovery.next = listOf(realService(newPc.ip))
         h.switchAndWait()
+        h.pickAndWait(newPc)
         val startsAfterSwitch = h.discovery.startCount
 
         assertFalse(
@@ -491,6 +600,7 @@ class DiscoverySwitchFlowR3Test {
     @Test
     fun `two candidates with no current target leave no hidden target after Ready re-entry`() {
         val h = harness()
+        h.viewModel.onForeground()
         h.discovery.next = listOf(realService(oldPc.ip), realService(newPc.ip))
         h.switchAndWait()
 
@@ -504,9 +614,12 @@ class DiscoverySwitchFlowR3Test {
         )
 
         // The R3 hole: a later Ready entry could promote an internally picked first
-        // computer into a real upload target.
-        h.viewModel.onReadyEntered()
-        waitIdle(h)
+        // computer into a real upload target. 1C-D-04@R7: Ready entry expresses a round to
+        // the task owner; it must settle without exposing a target.
+        h.viewModel.onForeground()
+        waitUntil("the Ready round must settle") {
+            !h.viewModel.ui.value.switchSearching && !h.coordinator.isRunning
+        }
         assertNull("Ready re-entry must not expose a hidden target", h.viewModel.currentDestination())
         assertFalse("Ready re-entry must not enable recording", h.viewModel.canRecord.value)
         assertEquals("Ready re-entry must not persist anything", 0, h.settings.savedCount)
@@ -515,17 +628,24 @@ class DiscoverySwitchFlowR3Test {
         // Cancelling and searching again must still leave the choice to the user.
         h.viewModel.dismissSwitchPicker()
         h.switchAndWait()
+        // 1C-D-04@R7: the automatic loop keeps rounds running, so pause it before asserting
+        // on the picker this browse produced.
+        h.viewModel.pauseConnectionTaskForTest()
         assertNull("a second search must not pick by discovery order", h.viewModel.currentDestination())
         assertFalse(h.viewModel.canRecord.value)
         assertEquals("nothing may be persisted by implicit picks", 0, h.settings.savedCount)
+        // 1C-D-04@R7: the automatic loop keeps rounds running, so pause it before asserting
+        // on the candidate list this browse produced — its own rounds re-authenticate and
+        // refresh the list (production pauses the same way for a transfer).
+        h.viewModel.pauseConnectionTaskForTest()
         assertEquals(
             "both authenticated computers stay offered",
             setOf(oldPc, newPc),
-            h.viewModel.targets.value.toSet(),
+            h.viewModel.switchEntries().map { it.target }.toSet(),
         )
 
         // Only the user's own pick creates a target.
-        h.viewModel.onTargetPicked(oldPc)
+        h.pickAndWait(oldPc)
         assertEquals(oldPc, h.viewModel.currentDestination())
         assertTrue(h.viewModel.canRecord.value)
         assertEquals(1, h.settings.savedCount)
@@ -539,7 +659,7 @@ class DiscoverySwitchFlowR3Test {
             "192.168.12.151" to oldPc.port,
         )
         val h = harness(savedIp = oldPc.ip, authenticated = peers)
-        h.viewModel.onReadyEntered()
+        h.viewModel.onForeground()
         waitForTarget(h, oldPc)
 
         // The browse finds TWO computers, neither of which is the one in use: there is
@@ -559,11 +679,11 @@ class DiscoverySwitchFlowR3Test {
         assertEquals(
             "the picker must offer the old computer plus both new ones",
             setOf(oldPc, DiscoverySelection("192.168.12.150", 18099), DiscoverySelection("192.168.12.151", 18099)),
-            h.viewModel.targets.value.toSet(),
+            h.viewModel.switchEntries().map { it.target }.toSet(),
         )
 
         // And the user's own pick out of that list is the only thing that persists.
-        h.viewModel.onTargetPicked(DiscoverySelection("192.168.12.151", 18099))
+        h.pickAndWait(DiscoverySelection("192.168.12.151", 18099))
         assertEquals(DiscoverySelection("192.168.12.151", 18099), h.viewModel.currentDestination())
         assertEquals("192.168.12.151" to 18099, h.settings.lastSaved)
         assertEquals(savedBefore + 1, h.settings.savedCount)
@@ -704,9 +824,13 @@ class DiscoverySwitchFlowR3Test {
 
         // Ready first: this is the real screen path, and it re-probes the saved
         // address (no browse at all).
-        viewModel.onReadyEntered()
+        viewModel.onForeground()
         waitUntil("Ready must verify the saved computer") { viewModel.currentDestination() == oldPc }
         assertEquals("Ready with a live saved address must not browse", 0, browser.startCount)
+        // 1C-D-04@R7: the connection owner now keeps scheduling rounds, so it is paused
+        // before the explicit switch to measure exactly one browse (production pauses the
+        // same way while a transfer owns the transport).
+        viewModel.pauseConnectionTaskForTest()
         assertTrue(
             "Ready must be the saved re-probe path: ${logged.snapshot()}",
             logged.snapshot().contains(DiscoveryDiagnostic.SAVED_PROBE_ACCEPTED),
@@ -716,33 +840,44 @@ class DiscoverySwitchFlowR3Test {
             logged.snapshot().contains(DiscoveryDiagnostic.BROWSE_STARTED),
         )
 
-        // Now the user taps the always-present entry: exactly one bounded browse, and
-        // no additional saved-address re-probe.
+        // Now the user taps the entry: exactly one bounded browse, and no additional
+        // saved-address re-probe. 1C-D-04@R7: the browse offers the computer; the user's
+        // own tap is what switches.
+        val probesBeforeSwitch = logged.snapshot().count { it == DiscoveryDiagnostic.PROBE_AUTHENTICATED }
         browser.queue(listOf(realService(newPc.ip)))
         viewModel.requestSwitch()
-        waitUntil("the switch must adopt the new computer") { viewModel.currentDestination() == newPc }
+        waitUntil("the switch must offer the new computer") {
+            viewModel.switchEntries().any { it.target == newPc }
+        }
+        assertEquals("the old computer stays in use until the pick", oldPc, viewModel.currentDestination())
 
         assertEquals("the entry must browse exactly once", 1, browser.startCount)
         val stages = logged.snapshot()
         assertEquals(
-            "a hidden 3 s saved re-probe would add another authenticated probe here",
-            2,
+            "the switch browse must probe exactly the one new candidate (no hidden 3 s saved re-probe)",
+            probesBeforeSwitch + 1,
             stages.count { it == DiscoveryDiagnostic.PROBE_AUTHENTICATED },
         )
         assertTrue("the browse stage must be reached: $stages", stages.contains(DiscoveryDiagnostic.BROWSE_STARTED))
         assertEquals("the switch must not rewrite the token", 0, settings.tokenWrites)
+
+        // The user's tap re-authenticates and adopts.
+        viewModel.onTargetPicked(newPc)
+        waitUntil("the user's pick must be adopted") { viewModel.currentDestination() == newPc }
         assertEquals("the adopted computer must be persisted", newPc.ip to newPc.port, settings.lastSaved)
         assertTrue(viewModel.canRecord.value)
     }
 
     @Test
-    fun `a second press while the bounded browse is running is refused`() {
+    fun `a second press while the bounded browse is running restarts it as the newest intent`() {
         val settings = FakeSettings(oldPc.ip, "18099", validToken)
+        // Delivers one candidate so the FIRST browse really runs and reports "searching".
         val browser = HoldDiscovery()
+        val probe = FakeProbe(setOf(oldPc.ip to oldPc.port, newPc.ip to newPc.port))
         val coordinator = DiscoveryCoordinator(
             settings = settings,
             discovery = browser,
-            probe = FakeProbe(setOf(oldPc.ip to oldPc.port, newPc.ip to newPc.port)),
+            probe = probe,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             probeDispatcher = Dispatchers.IO,
             timing = FakeTiming(),
@@ -755,23 +890,36 @@ class DiscoverySwitchFlowR3Test {
             clientFactory = { null },
             context = null,
             discoveryBrowser = browser,
-            discoveryProbe = FakeProbe(setOf(oldPc.ip to oldPc.port, newPc.ip to newPc.port)),
+            discoveryProbe = probe,
             coordinatorOverride = coordinator,
         )
-        viewModel.onReadyEntered()
+        // R7: Ready entry is what establishes the foreground round.
+        viewModel.onForeground()
         waitUntil("Ready must verify the saved computer") { viewModel.currentDestination() == oldPc }
+        // 1C-D-04@R8: freeze the loop first and take the baseline AFTER it settled, so the count
+        // below is about the two explicit presses and not about the eager first round.
+        viewModel.pauseConnectionTaskForTest()
+        val startsBefore = browser.startCount
 
         viewModel.requestSwitch()
+        // 1C-D-04@R8: `switchSearching` can be raised a moment before the platform browser is
+        // actually opened, so the count is asserted only once the browse really exists.
         waitUntil("the search state must be published") { viewModel.ui.value.switchSearching }
+        waitUntil("the browse must really be open") { browser.startCount > startsBefore }
         assertEquals("the old computer stays usable while searching", oldPc, viewModel.currentDestination())
-        assertEquals("the browse must have opened once", 1, browser.startCount)
+        assertEquals("the press must have opened exactly one browse", startsBefore + 1, browser.startCount)
 
-        // A second press while the search is in flight must not start a new browse:
-        // the entry is disabled by `switchSearching`, and the ViewModel additionally
-        // refuses a manual probe in flight.
+        // 1C-D-04@R7 §2A: the user pressed 重新搜索 again while the window is open. The
+        // newest intent must win — the running browse is cancelled and a replacement
+        // starts, so the button is never a silent no-op and rounds never accumulate.
         viewModel.requestSwitch()
-        Thread.sleep(60)
-        assertEquals("a second press must not stack a browse", 1, browser.startCount)
+        waitUntil("the replacement browse must start") { browser.startCount > startsBefore + 1 }
+        Thread.sleep(150)
+        assertTrue(
+            "clicks must replace, not stack (two presses open at most two browsers): ${browser.startCount}",
+            browser.startCount <= startsBefore + 2,
+        )
+        assertEquals("the old computer stays usable throughout", oldPc, viewModel.currentDestination())
 
         viewModel.dismissSwitchPicker()
         viewModel.stopDiscovery()

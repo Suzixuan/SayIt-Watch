@@ -10,9 +10,14 @@ android {
 
     defaultConfig {
         applicationId = "com.sayit.watch.debug"
-        // Development candidate, not a release.
-        versionCode = 5
-        versionName = "0.3.0-dev.1"
+        // Development candidate, not a release. 1C-D-04@R7: this connection-recovery and
+        // explicit-switch candidate is distinguished from the previous dev.1 build.
+        // 1C-D-04@R10: the NSD service-type form the platform's resolve callback really reports is
+        // now accepted, so the APK is bumped to dev.3/code 7 and PM can read the version back to
+        // confirm the tested build on the device.
+        // R11: distinguish the switch-cancel status repair during device acceptance.
+        versionCode = 9
+        versionName = "0.3.0-dev.5"
         minSdk = 30
         targetSdk = 34
     }

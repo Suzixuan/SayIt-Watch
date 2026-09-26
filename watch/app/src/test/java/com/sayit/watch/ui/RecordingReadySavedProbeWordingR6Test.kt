@@ -42,7 +42,7 @@ import java.io.File
  * "已自动发现电脑" on a cold start whose only log lines were
  * `saved-probe:accepted` / `verdict:one` (no `browse:*`).
  *
- * These tests therefore drive the REAL `RecordingViewModel.onReadyEntered()` through
+ * These tests therefore drive the REAL `RecordingViewModel.onForeground()` through
  * the REAL `DiscoveryCoordinator` and assert BOTH:
  *   (a) the ViewModel currently publishes `Discovered` (documenting why the pure
  *       function test was insufficient), and
@@ -68,6 +68,10 @@ class RecordingReadySavedProbeWordingR6Test {
 
     private val screenSource: String by lazy {
         File("src/main/java/com/sayit/watch/ui/RecordingScreen.kt").readText()
+    }
+
+    private val stringsSource: String by lazy {
+        File("src/main/res/values/strings.xml").readText()
     }
 
     // ── test doubles ─────────────────────────────────────────────────────────
@@ -178,7 +182,7 @@ class RecordingReadySavedProbeWordingR6Test {
     fun `the saved-probe production path reaches the UI state but is never worded as a discovery`() {
         val h = harness()
         // The exact real-device input: a saved address and a live receiver.
-        h.viewModel.onReadyEntered()
+        h.viewModel.onForeground()
         waitForTarget(h, savedPc)
 
         val stages = h.log.snapshot()
@@ -206,18 +210,13 @@ class RecordingReadySavedProbeWordingR6Test {
         assertTrue(h.viewModel.canRecord.value)
 
         // (b) ...and the Ready wording must STILL be neutral.
-        val status = readyStatusTextRes(h.viewModel.discovery.value, h.viewModel.canRecord.value)
+        val status = readyStatusTextRes(h.viewModel.discovery.value, h.viewModel.canRecord.value, connecting = false)
         assertEquals(R.string.discovery_saved_neutral, status)
-        assertNotEquals(
-            "'已自动发现电脑' must not be reachable for a saved-address re-probe",
-            R.string.discovery_found,
-            status,
-        )
-        // The rendered label is a resource lookup, so this is the on-screen text.
-        assertNotEquals(
-            "the neutral wording must not be the discovery claim",
-            R.string.discovery_found,
-            status,
+        // 1C-D-04@R7: the discovery claim resource was removed from the app, so
+        // "已自动发现电脑" is not expressible at all any more.
+        assertFalse(
+            "the removed discovery claim must not reappear in strings.xml",
+            stringsSource.contains("name=\"discovery_found\""),
         )
     }
 
@@ -237,10 +236,10 @@ class RecordingReadySavedProbeWordingR6Test {
         assertEquals(
             "a manual success must not claim an automatic discovery",
             R.string.discovery_saved_neutral,
-            readyStatusTextRes(h.viewModel.discovery.value, h.viewModel.canRecord.value),
+            readyStatusTextRes(h.viewModel.discovery.value, h.viewModel.canRecord.value, connecting = false),
         )
         // And a failed/no-target fallback keeps naming the action.
-        assertEquals(R.string.discovery_manual, readyStatusTextRes(DiscoveryState.ManualFallback, false))
+        assertEquals(R.string.discovery_manual, readyStatusTextRes(DiscoveryState.ManualFallback, connected = false, connecting = false))
     }
 
     @Test
@@ -248,7 +247,7 @@ class RecordingReadySavedProbeWordingR6Test {
         // This is the R5 test gap, pinned as a fact rather than a comment: the state the
         // R5 test used is not the state the production chain produces.
         val h = harness()
-        h.viewModel.onReadyEntered()
+        h.viewModel.onForeground()
         waitForTarget(h, savedPc)
         assertNotEquals(
             "the saved verdict arrives as Discovered, not ExistingAddress",
@@ -258,29 +257,35 @@ class RecordingReadySavedProbeWordingR6Test {
         // Both states must nevertheless map to neutral wording.
         assertEquals(
             R.string.discovery_saved_neutral,
-            readyStatusTextRes(DiscoveryState.ExistingAddress, true),
+            readyStatusTextRes(DiscoveryState.ExistingAddress, connected = true, connecting = false),
         )
         assertEquals(
             R.string.discovery_saved_neutral,
-            readyStatusTextRes(DiscoveryState.Discovered, true),
+            readyStatusTextRes(DiscoveryState.Discovered, connected = true, connecting = false),
         )
     }
 
     @Test
     fun `non-ready statuses keep their accurate wording`() {
         // Searching is an action, not a result.
-        assertEquals(R.string.discovery_searching, readyStatusTextRes(DiscoveryState.Searching, false))
-        assertEquals(R.string.discovery_searching, readyStatusTextRes(DiscoveryState.Searching, true))
+        assertEquals(R.string.discovery_searching, readyStatusTextRes(DiscoveryState.Searching, connected = false, connecting = false))
+        assertEquals(R.string.discovery_searching, readyStatusTextRes(DiscoveryState.Searching, connected = true, connecting = false))
         // No target yet.
-        assertEquals(R.string.discovery_none_yet, readyStatusTextRes(DiscoveryState.Idle, false))
-        assertEquals(R.string.discovery_awaiting, readyStatusTextRes(DiscoveryState.Discovered, false))
-        assertEquals(R.string.discovery_awaiting, readyStatusTextRes(DiscoveryState.ExistingAddress, false))
+        assertEquals(R.string.discovery_none_yet, readyStatusTextRes(DiscoveryState.Idle, connected = false, connecting = false))
+        assertEquals(R.string.discovery_awaiting, readyStatusTextRes(DiscoveryState.Discovered, connected = false, connecting = false))
+        assertEquals(R.string.discovery_awaiting, readyStatusTextRes(DiscoveryState.ExistingAddress, connected = false, connecting = false))
         // Failure must name the next action, not claim success.
-        assertEquals(R.string.discovery_manual, readyStatusTextRes(DiscoveryState.ManualFallback, false))
-        assertEquals(R.string.discovery_manual, readyStatusTextRes(DiscoveryState.ManualFallback, true))
+        assertEquals(R.string.discovery_manual, readyStatusTextRes(DiscoveryState.ManualFallback, connected = false, connecting = false))
+        // 1C-D-04@R7: a fallback never claims a live connection, whatever the flag says.
+        assertEquals(R.string.discovery_manual, readyStatusTextRes(DiscoveryState.ManualFallback, connected = true, connecting = false))
+        // 1C-D-04@R7 §2A: a round that is still checking says so instead of reusing the
+        // previous authentication.
+        assertEquals(R.string.discovery_searching, readyStatusTextRes(DiscoveryState.Idle, connected = true, connecting = true))
+        assertEquals(R.string.discovery_searching, readyStatusTextRes(DiscoveryState.Discovered, connected = true, connecting = true))
 
         // No reachable state may claim a completed automatic discovery while the UI
-        // cannot prove one happened.
+        // cannot prove one happened. 1C-D-04@R7 removed the claim resource entirely, so
+        // this loop now pins the invariant on the only strings that exist.
         for (state in listOf(
             DiscoveryState.Idle,
             DiscoveryState.Searching,
@@ -288,14 +293,17 @@ class RecordingReadySavedProbeWordingR6Test {
             DiscoveryState.Discovered,
             DiscoveryState.ManualFallback,
         )) {
-            for (verified in listOf(false, true)) {
-                assertNotEquals(
-                    "state $state (verified=$verified) must not claim a discovery",
-                    R.string.discovery_found,
-                    readyStatusTextRes(state, verified),
-                )
+            for (connected in listOf(false, true)) {
+                for (connecting in listOf(false, true)) {
+                    val res = readyStatusTextRes(state, connected = connected, connecting = connecting)
+                    assertTrue("state $state must map to a real resource", res != 0)
+                }
             }
         }
+        assertFalse(
+            "the discovery claim resource must not exist any more",
+            stringsSource.contains("name=\"discovery_found\""),
+        )
     }
 
     @Test

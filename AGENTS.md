@@ -2,6 +2,8 @@
 
 ## Authority and current goal
 
+- Current user-approved development slice is `1C-D-04@R7`; read `docs/DELIVERY-1C-D-DISCOVERY-REGRESSION-R7.md`. It supersedes older slice-specific allowlists only for its expressly listed connection, UI and unified Debug portable-package work. Use this sync worktree and `codex/watch-connection-r7`; the old sibling `Saylt` checkout is not the product-write target. PM retains device acceptance and publication authority.
+
 - Read `HANDOFF.md`, `PROJECT_PROGRESS.md`, and the active delivery task before changing files.
 - Delivery 1A and Delivery 1B stage-7 source/UI gates are PM-accepted. Delivery 1B device/ten-run acceptance remains incomplete. On 2026-09-15 the user separately unlocked the bounded Delivery 1C automatic-discovery task in `docs/DELIVERY-1C-D-AUTO-DISCOVERY-HANDOFF.md`; automatic discovery is not VERIFIED until PM device acceptance passes.
 - `HANDOVER.md` documents the inherited security-hardened SayIt source. Preserve those fixes.

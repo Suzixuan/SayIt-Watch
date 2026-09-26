@@ -1,5 +1,7 @@
 # SayIt Watch Transport project progress
 
+当前工作：R10 单电脑真实 mDNS 发现与认证链已通过。`1C-D-04@R11` 取消切换后状态残留修复已提交 `c334e25`；PM 235/235、lint/build 通过，dev.4/code 8 已保留数据安装，用户真机复测回复“可以了”，本项验收关闭。双电脑选择/双向录音及前台晚启动恢复仍待验，阶段 12 保持开放。权威状态见 HANDOFF.md 顶部。
+
 2026-09-20 同步状态：已通过 PR #4 合入原有公开仓库 `Suzixuan/SayIt-Watch` 的 `main`，合并提交 `b561dc6d64f28199e1ba2105a2b407ac0ccc57cb`。新版源码、手表首页与截图已在默认分支，原历史保留；尚未发布对应安装包。交接方式见 `HANDOFF.md` 顶部。阶段 12 双电脑端到端验收仍未完成。
 
 当前 UI 与 GitHub 交接：PM `1C-PM-UI-01@R4` 将「已连接电脑」光学居中，198/198 单测、lint 0 error、Debug build 通过；保留数据装表后真机截图与预览逐像素一致，其他表盘区域 0 像素变化。README 已改为手表中心并采用手表 Logo/真机图，且已同步到原公开仓库 `main`。发布状态见 `HANDOFF.md`。双电脑自动发现/切换/录音仍未端到端验收，阶段 12 未完成。
@@ -29,11 +31,11 @@ Delivery 1C Repair 1 (D, 2026-09-15, contract `docs/DELIVERY-1C-D-REPAIR-1.md`):
 | Experience | 7B | dev.3 minimalist Watch UI | ☑ | 🟢 PM accepted | Colleague D | Commit `516cde9`; Config/Ready/Recording only, silent one-shot upload, real-device screenshots and one real Watch→ASR→Paste closure |
 | Acceptance | 8 | Ten consecutive real end-to-end runs | ☐ | ⚪ Deferred to normal use | User | User will accumulate consecutive real-use evidence and Stop→Paste latency during normal use; no dedicated test session now |
 | Security | 9 | Repository and runtime security hardening | ☐ | 🔵 PM re-review — repair required | PM | `83056ab` + `a7ddcac` are on `main`; CodeQL succeeds and GitHub protections are enabled. Remaining blockers: zero-token loopback behavior conflicts with the documented local default; diagnostics `timeline.json` still derives titles from raw logs and can retain transcript text; wildcard Watch bind remains an unresolved product/security exception. |
-| Packaging | 10 | Self-contained silent Windows portable build and Release | ☐ | 🔵 Repair required | Colleague D | Source commit `032de34` hides the console, but desktop and Release `sayit.exe` are the older `13:02:50` artifact (`123FF8CB...9F8`); the freshly built silent target is `13:20:58` (`E064AE0C...9B`). Rebuild/repackage/readback is required. |
+| Packaging | 10 | Self-contained silent Windows portable build and Release | ☐ | 🔵 R9 测试便携包已启动；正式 Release 未完成 | Colleague D | R9 最终产品头 `e33b536`；PM 独立复跑 227/227，lint 0 error，ZIP 28 条哈希全对，包内 `git_head` 与 EXE 哈希正确。用户授权后已从该包启动，监听 18099 且 discovery 401 正常；本轮 Watch 类型校验缺陷不要求重建 Windows 包。测试包不关闭正式 Release。 |
 | Experience | 11 | Optional Wear OS Tile card | ☐ | ⚪ Deferred | Colleague D | Initial Tiles 1.2/1.4 implementation did not compile and was reverted; current tree is clean and contains no Tile feature. This is outside the core verified flow. |
-| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔵 R4 UI 真机局部通过；双电脑待验 | PM | PM `1C-PM-UI-01@R4` 光学居中真机通过，R3 圆屏菜单/入口保留，198/198 单测及 lint/build 通过。笔记本不在线，新电脑发现/选择/录音链路未验。见 `HANDOFF.md`。 |
+| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔵 单电脑发现、R11 取消切换修复通过；整体待验 | PM, Luna | R10 真机发现认证链通过；R11 `c334e25`，235/235、lint/build 通过，dev.4/code 8 已安装，用户返回交互复测通过。双电脑选择/双向录音及前台晚启动恢复尚未完整验收。见 HANDOFF.md 顶部。 |
 
-Current external slice: Delivery 1C Repair 3 delivered; D source writing stopped, no new task dispatched. Contract: `docs/DELIVERY-1C-D-REPAIR-3.md`. Core device chain passed through PM discovery/offline/recovery checks and user-confirmed recording→ASR→Paste. Original failure root cause remains unproven; IP-change/multiple-PC boundary acceptance is still partial. The latest test used the separate repaired Debug desktop, not a replaced installed desktop. Canonical evidence and last observed runtime/restoration instructions: `HANDOFF.md`. Ten-run evidence, security/package work and Wear Tile remain separate.
+Current external slice: R11 本项验收通过，手表 dev.4/code 8；Windows R9 包保持不变。剩余双电脑与恢复场景继续按原 A-H 验收；阶段 12 尚未关闭。十连测、正式安全/Release 和 Wear Tile 仍独立开放。
 
 Updated sequencing decision (user, 2026-08-29): colleague Z will do the Watch UI in the same task package as Z3 Repair 1, but only after the three Repair blockers pass automated verification. First real Galaxy Watch → existing SayIt → focused Windows input-box closure remains a later PM-unlocked device gate. The formal ten-run latency acceptance remains final.
 

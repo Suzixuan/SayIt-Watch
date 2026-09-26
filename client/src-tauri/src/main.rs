@@ -375,7 +375,13 @@ fn main() {
                 // every admission event is silently dropped (bridge_timeout).
                 match watch_receiver::start() {
                     Ok(()) => log::info!("Watch receiver startup requested (debug build)"),
-                    Err(e) => log::warn!("Watch receiver not started: {}", e),
+                    Err(e) => {
+                        // 1C-D-04@R7 §2C: a receiver that never started must be VISIBLE.
+                        // Only the fixed category goes to the log; the user sees a short,
+                        // actionable sentence with no config value or token in it.
+                        log::warn!("Watch receiver not started: {}", e);
+                        notify_watch_receiver_start_failure(e);
+                    }
                 }
             }
             // SayIt's main window and lazy overlay share one WebView2 user-data directory.
@@ -760,6 +766,53 @@ fn main() {
                 commands::system::install_pending_update_on_exit(app_handle);
             }
         });
+}
+
+/// 1C-D-04@R7 §2C — shows a receiver startup failure to the user.
+///
+/// Called only from the debug-only receiver startup path. The sentence comes from
+/// [`watch_receiver::ReceiverStartError::user_message`], so no configuration value, port,
+/// path or token can reach the dialog; the fixed category is already in `sayit.log`.
+///
+/// The dialog is shown from its own thread: `MessageBoxW` blocks until the user dismisses
+/// it, and `.setup()` must not stall the main window behind it.
+#[cfg(debug_assertions)]
+fn notify_watch_receiver_start_failure(error: watch_receiver::ReceiverStartError) {
+    let title = "SayIt — 手表传输未启动";
+    let message = error.user_message().to_string();
+    std::thread::Builder::new()
+        .name("watch-receiver-notice".to_string())
+        .spawn(move || {
+            #[cfg(target_os = "windows")]
+            {
+                use windows::core::PCWSTR;
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    MessageBoxW, MB_ICONWARNING, MB_OK, MB_SETFOREGROUND,
+                };
+                // Message and title are fixed literals: no runtime value is interpolated
+                // into either string, so nothing sensitive can be echoed.
+                let encode = |text: &str| -> Vec<u16> {
+                    text.encode_utf16().chain(std::iter::once(0)).collect()
+                };
+                let message = encode(&message);
+                let title = encode(title);
+                unsafe {
+                    MessageBoxW(
+                        None,
+                        PCWSTR(message.as_ptr()),
+                        PCWSTR(title.as_ptr()),
+                        MB_OK | MB_ICONWARNING | MB_SETFOREGROUND,
+                    );
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                // Non-Windows debug builds have no native dialog in this slice; the log
+                // line is the only channel there.
+                let _ = &message;
+            }
+        })
+        .ok();
 }
 
 #[cfg(test)]

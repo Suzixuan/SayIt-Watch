@@ -191,12 +191,26 @@ class DiscoveryRegressionTest {
             "_sayit-watch._tcp.local",
             "_SAYIT-WATCH._TCP.",
             " _sayit-watch._tcp. ",
+            // 1C-D-04@R10: what onServiceResolved really reports on a Galaxy Watch 7
+            // (Android 16 / API 36) — the SAME type with a single LEADING dot. R9 accepted the
+            // found callback's trailing-dot form and then refused this one, so the device
+            // resolved its own receiver and reported candidate:rejected-type. This list is
+            // exactly where the miss hid: the real device spelling was simply absent.
+            "._sayit-watch._tcp",
+            "._sayit-watch._tcp.",
+            "._sayit-watch._tcp.local",
+            "._sayit-watch._tcp.local.",
+            "._SAYIT-WATCH._TCP. ",
         )) {
             assertTrue("type '$type' must be accepted", DiscoveryPolicy.isOurServiceType(type))
         }
         for (type in listOf(
             null, "", "   ", "_http._tcp.", "_sayit-watch._udp.", "_sayit-watch._udp.local.",
             "_sayit-watch._tcp.example.", "_other._tcp.", "_sayit._tcp.", "sayit-watch._tcp.",
+            // 1C-D-04@R10: ONE leading dot is a platform variant, two is a different name, and
+            // the widening must not leak into unrelated types.
+            ".", "..", ".._sayit-watch._tcp", ".._sayit-watch._tcp.local.",
+            "._http._tcp", "._sayit-watch._udp", "._sayit-watch._tcp.example.",
         )) {
             assertFalse("type '$type' must be rejected", DiscoveryPolicy.isOurServiceType(type))
         }
@@ -282,16 +296,24 @@ class DiscoveryRegressionTest {
 
         // The user taps 切换电脑: the explicit browse must NOT consult the saved
         // priority, so the other computer becomes selectable without typing an IP.
+        // 1C-D-04@R7 必修 2: the browse only OFFERS what authenticated; it never adopts.
+        // The current computer is not re-probed inside the browse, so it stays in use.
+        val keep = DiscoverySelection("192.168.12.100", 18099)
         val runId = bridge.newSwitchRun()
         discovery.push(realService(ip = "192.168.12.142"))
         assertEquals(
             "the explicit switch must offer exactly the other computer",
-            DiscoverySelection("192.168.12.142", 18099),
+            listOf(DiscoverySelection("192.168.12.142", 18099)),
             bridge.onSwitchBrowse(runId),
         )
         assertEquals(
+            "the picker must offer the current computer plus the new one",
+            listOf(keep, DiscoverySelection("192.168.12.142", 18099)),
+            bridge.pickerCandidates,
+        )
+        assertEquals(
             "the current computer must still be in use until the picker confirms",
-            DiscoverySelection("192.168.12.100", 18099),
+            keep,
             bridge.verifiedTarget,
         )
         assertTrue(
