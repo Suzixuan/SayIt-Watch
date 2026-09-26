@@ -1,5 +1,12 @@
 # SayIt Watch Transport handoff
 
+## R12-A 前台自动恢复：1C-PM-R12-A@R1（2026-09-26，单电脑通过）
+
+- R12 真机验收暴露新缺陷：电脑恢复后日志已 `probe:authenticated / verdict:one`，但前台仍显示“等待认证结果…”。根因是前台进入先撤销在线投影，保留目标复验成功后旧代码只清 `connecting`，没有恢复 `connected/transportAvailable`。最小修复让成功探针通过既有 `setVerifiedDestination(current)` 重新发布同一已认证目标；未改 mDNS、认证、上传协议、UI 布局或 Windows 包。
+- 产品提交 `9ba58b79a4c8c917b81535d7240c3441c5c79143`。新增生产链回归修复前 1/1 红、修复后 1/1 绿；全量 25 suites / 236 tests / 0 failures / 0 errors / 0 skipped，lint 0 error / 39 warnings，Debug build 退出 0。候选为 dev.6/code 10，APK SHA-256 `69D944256548304307D84813A2C7AE45BF5294C9DD12EFA150775FE4F1CFB7FE`；保留数据安装并读回版本，冷启动成功。
+- 真机 R12-A：R9 停止后首页明确失联；原样重启后无需手输 IP、选电脑或重启 App 即恢复“已连接电脑”；切换页当前目标为 `192.168.12.142:18099`，取消返回仍保持连接。恢复后一次确认录音在 Windows 只形成一个 processing/final/fallback 链，未见业务重复。证据和命令见 `docs/R12-PM-RECOVERY-DEV6.md` 与 `docs/evidence/R12-20260926/`。
+- **阶段 12 仍不关闭**：双电脑发现/选择/取消/回切与 A/B 音频路由未验；重复上传只覆盖本轮单机一条；dev.5 起的竖屏仍缺真实转腕观察。无 push/merge/tag/Release，R9 Windows 包不重建。
+
 ## SayIt 应用竖屏固定（2026-09-25）
 
 用户要求关闭手表界面自动旋转。主 Activity 原未声明方向；PM 仅新增 `screenOrientation=portrait`，版本升为 dev.5/code 9。lintDebug/assembleDebug 退出 0，最终 APK 清单读回方向值 1（portrait）。保留数据安装 Success，设备读回 dev.5/code 9，冷启动成功。APK SHA-256 `2B906154F6341E7A014859276F7E97D4EBF71C39A3B29000079955AA4134669F`。未改系统旋转设置或 UI 布局；实物转腕效果待用户确认，原双电脑验收未关闭。
