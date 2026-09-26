@@ -136,10 +136,20 @@ class DiscoverySwitchFlowR3Test {
         override val pollIntervalMs = 10L
     }
 
+    /** Long enough to prove the picker updates before the browse completes. */
+    private class StreamingSwitchTiming : DiscoveryTiming {
+        override val savedProbeTotalMs = 60L
+        override val discoveryWindowMs = 1_500L
+        override val savedProbeAttemptMs = 25L
+        override val discoveryProbeAttemptMs = 60L
+        override val pollIntervalMs = 10L
+    }
+
     private class Harness(
         val settings: FakeSettings,
         val discovery: FakeDiscovery,
         val probe: FakeProbe,
+        private val timing: DiscoveryTiming = FakeTiming(),
     ) {
         lateinit var coordinator: DiscoveryCoordinator
         lateinit var viewModel: RecordingViewModel
@@ -151,7 +161,7 @@ class DiscoverySwitchFlowR3Test {
                 probe = probe,
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
                 probeDispatcher = Dispatchers.IO,
-                timing = FakeTiming(),
+                timing = timing,
                 diagnostics = CategoryLog(),
             )
             viewModel = RecordingViewModel(
@@ -226,9 +236,10 @@ class DiscoverySwitchFlowR3Test {
     private fun harness(
         savedIp: String = "",
         authenticated: Set<Pair<String, Int>> = setOf(oldPc.ip to oldPc.port, newPc.ip to newPc.port),
+        timing: DiscoveryTiming = FakeTiming(),
     ): Harness {
         val settings = FakeSettings(savedIp, if (savedIp.isEmpty()) "" else "18099", validToken)
-        return Harness(settings, FakeDiscovery(), FakeProbe(authenticated)).also { it.build() }
+        return Harness(settings, FakeDiscovery(), FakeProbe(authenticated), timing).also { it.build() }
     }
 
     // ── 必修 1: the first switch must be adoptable ────────────────────────────
@@ -272,6 +283,27 @@ class DiscoverySwitchFlowR3Test {
             1,
             h.discovery.startCount,
         )
+    }
+
+    @Test
+    fun `an authenticated computer is visible before the switch browse window closes`() {
+        val h = harness(savedIp = oldPc.ip, timing = StreamingSwitchTiming())
+        h.viewModel.onForeground()
+        waitForTarget(h, oldPc)
+        h.viewModel.pauseConnectionTaskForTest()
+
+        h.discovery.next = listOf(realService(oldPc.ip), realService(newPc.ip))
+        h.viewModel.requestSwitch()
+
+        waitUntil("the new computer must stream into the open picker") {
+            h.coordinator.isRunning &&
+                h.viewModel.ui.value.switchSearching &&
+                h.viewModel.switchEntries().any { it.target == newPc && !it.isCurrent }
+        }
+        assertTrue("the full collection window must still be open", h.coordinator.isRunning)
+        assertEquals("the working computer must remain selected", oldPc, h.viewModel.currentDestination())
+
+        h.viewModel.dismissSwitchPicker()
     }
 
     @Test

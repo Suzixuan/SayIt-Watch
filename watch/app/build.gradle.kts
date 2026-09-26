@@ -17,8 +17,9 @@ android {
         // confirm the tested build on the device.
         // R11: distinguish the switch-cancel status repair during device acceptance.
         // R12-A: distinguish the foreground-revalidation Ready projection repair.
-        versionCode = 10
-        versionName = "0.3.0-dev.6"
+        // R12-B: stream authenticated switch candidates before the browse window closes.
+        versionCode = 11
+        versionName = "0.3.0-dev.7"
         minSdk = 30
         targetSdk = 34
     }

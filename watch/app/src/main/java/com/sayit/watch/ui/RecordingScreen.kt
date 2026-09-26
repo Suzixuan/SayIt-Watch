@@ -541,6 +541,11 @@ private fun ComputerSwitchDialog(viewModel: RecordingViewModel, ui: WatchUiState
                     Modifier.fillMaxWidth()
                         .selectable(
                             selected = entry.isCurrent,
+                            // Progress rows arrive before the complete 8 s window
+                            // closes. Keep them visible as feedback, but wait for the
+                            // collector to stop before a pick so closing the dialog can
+                            // never leave a hidden NSD browse behind it.
+                            enabled = !ui.switchSearching,
                             onClick = { viewModel.onTargetPicked(entry.target) },
                         )
                         .background(if (entry.isCurrent) SayItBlue else FieldSurface, RoundedCornerShape(12.dp))

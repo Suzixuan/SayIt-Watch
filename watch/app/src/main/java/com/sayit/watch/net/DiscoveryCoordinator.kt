@@ -337,22 +337,24 @@ class DiscoveryCoordinator(
      * saved address (the user explicitly asked for other computers) and NEVER
      * publishes a verdict or persists anything on its own: it only returns the
      * endpoints that authenticated. The caller shows them and persists exactly the
-     * one the user picks. An endpoint equal to [excluding] (the computer already in
-     * use) and any ambiguous result are withheld, so the caller can only ever offer
-     * a real choice or fall back — never a silent winner.
+     * one the user picks. An endpoint equal to [excluding] is omitted from the final
+     * return value; authenticated progress may still include it so the picker can
+     * label the computer in use. No result is adopted silently.
      *
-     * @return the single newly authenticated endpoint, or an empty list.
+     * [onAuthenticated] receives cumulative, authenticated-only progress while
+     * the window remains open. The return value is the final distinct list.
      */
     suspend fun collectAndSelect(
         excluding: DiscoverySelection? = null,
         onState: (DiscoveryState) -> Unit = {},
+        onAuthenticated: (List<DiscoverySelection>) -> Unit = {},
     ): List<DiscoverySelection> {
         val job = synchronized(runLock) {
             if (isRunning) return emptyList()
             val runId = ++runCounter
             scope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    runSwitchBrowse(runId)
+                    runSwitchBrowse(runId, onAuthenticated)
                 } finally {
                     synchronized(runLock) {
                         if (runId == runCounter && inFlight === coroutineContext[Job]) {
@@ -374,7 +376,10 @@ class DiscoveryCoordinator(
     @Volatile
     private var currentCollected: List<DiscoverySelection> = emptyList()
 
-    private suspend fun runSwitchBrowse(runId: Long) {
+    private suspend fun runSwitchBrowse(
+        runId: Long,
+        onAuthenticated: (List<DiscoverySelection>) -> Unit,
+    ) {
         if (!isEnabled()) {
             publishCurrent(runId, DiscoveryState.ManualFallback, {})
             return
@@ -383,7 +388,7 @@ class DiscoveryCoordinator(
             publishCurrent(runId, DiscoveryState.ManualFallback, {})
             return
         }
-        val (authenticated, candidates) = browseAndAuthenticate(runId)
+        val (authenticated, candidates) = browseAndAuthenticate(runId, onAuthenticated)
         if (!isCurrentRun(runId)) return
         if (candidates == 0) diagnostics.note(DiscoveryDiagnostic.BROWSE_NO_CANDIDATE)
         val list = authenticated.values.toList()
@@ -575,6 +580,7 @@ class DiscoveryCoordinator(
      */
     private suspend fun browseAndAuthenticate(
         runId: Long,
+        onAuthenticated: (List<DiscoverySelection>) -> Unit = {},
     ): Pair<Map<String, DiscoverySelection>, Int> {
         val candidates = LinkedHashMap<String, DiscoverySelection>()
         val authenticated = LinkedHashMap<String, DiscoverySelection>()
@@ -635,6 +641,16 @@ class DiscoveryCoordinator(
                 )
                 if (result is DiscoveryProbeResult.Authenticated) {
                     authenticated[key(next)] = next
+                    // An explicit switch picker must not look empty for the rest of
+                    // the 8 s collection window after a computer has already proved
+                    // its identity. Publish only authenticated endpoints, keep the
+                    // browse open for later arrivals, and let the caller generation-
+                    // gate the UI consequence. Automatic discovery uses the default
+                    // no-op callback and still applies its frozen 0/1/>=2 verdict
+                    // only after the complete window.
+                    if (isCurrentRun(runId)) {
+                        onAuthenticated(authenticated.values.toList())
+                    }
                 }
                 // A rejected candidate is simply skipped: never trust a service
                 // that did not authenticate with our token.
@@ -1071,6 +1087,15 @@ class ResolverBridge(
     /** Runs the explicit switch browse; `null` means no collector is attached. */
     private val executeSwitch: suspend (runId: Long) -> List<DiscoverySelection>? = { null },
     /**
+     * Progress-aware switch adapter. Existing test doubles may keep using
+     * [executeSwitch]; production publishes each authenticated endpoint before the
+     * full browse window closes.
+     */
+    private val executeSwitchWithProgress: suspend (
+        runId: Long,
+        onAuthenticated: (List<DiscoverySelection>) -> Unit,
+    ) -> List<DiscoverySelection>? = { runId, _ -> executeSwitch(runId) },
+    /**
      * Confirms ONE candidate before the user's explicit pick adopts it. It is deliberately
      * separate from [executeAutomatic]: confirming a pick must not disturb the target in use
      * (the default would stop the coordinator's run and clear the stored destination).
@@ -1255,7 +1280,10 @@ class ResolverBridge(
      * browse, so "did not appear in this 8 s window" is not evidence that it is gone;
      * the bounded idle health check is what decides that (1C-D-04@R7 §2A).
      */
-    suspend fun handleSwitchBrowse(runId: Long): List<DiscoverySelection> {
+    suspend fun handleSwitchBrowse(
+        runId: Long,
+        onProgress: (List<DiscoverySelection>) -> Unit = {},
+    ): List<DiscoverySelection> {
         val action = engine.onReadyEntered(force = true)
         if (action !is ResolverAction.StartAutomatic) {
             endPickerSearch()
@@ -1266,7 +1294,12 @@ class ResolverBridge(
             endPickerSearch()
             return emptyList()
         }
-        val collected = executeSwitch(runId)
+        val collected = executeSwitchWithProgress(runId, progress@{ partial ->
+            if (runId != switchGeneration) return@progress
+            if (!engine.isCurrentAutomaticRun(generation)) return@progress
+            mergeKnown(partial)
+            onProgress(pickerCandidates)
+        })
         if (collected != null) mergeKnown(collected)
         if (!engine.isCurrentAutomaticRun(generation)) {
             endPickerSearch()
@@ -1458,7 +1491,9 @@ class ResolverBridge(
             executeManual = { candidate, _ -> coordinator?.probeCandidate(candidate) ?: false },
             stopAutomatic = { coordinator?.stop() },
             persistManual = { coordinator?.adopt(it) },
-            executeSwitch = { runId -> coordinator?.collectAndSelect() },
+            executeSwitchWithProgress = { _, onAuthenticated ->
+                coordinator?.collectAndSelect(onAuthenticated = onAuthenticated)
+            },
             executePickProbe = { candidate -> coordinator?.probeCandidate(candidate) ?: false },
         )
     }

@@ -790,7 +790,12 @@ class RecordingViewModel(
         uiEvent { it.switchSearching(true) }
         val browseRunId = resolver.newSwitchRun()
         val found = try {
-            resolver.handleSwitchBrowse(browseRunId)
+            resolver.handleSwitchBrowse(browseRunId) {
+                // The 8 s window stays open for later computers, but every endpoint
+                // that has already passed the Bearer probe becomes visible at once.
+                // A superseded browse is forbidden from repainting the newer picker.
+                if (resolver.isCurrentSwitchRun(browseRunId)) publishTargets()
+            }
         } finally {
             // The picker must never stay in "searching" — not even when the round was cancelled by
             // a newer intent. 1C-D-04@R9: no NonCancellable wraps a cancelled round's
