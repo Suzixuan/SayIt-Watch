@@ -27,10 +27,17 @@ Date: 2026-09-26. Candidate: Watch `0.3.0-dev.11` / code 15.
 
 ## Device boundary
 
-The previously supplied wireless ADB endpoint `192.168.12.126:36727` currently refuses the
-connection, so dev.11 has not been installed or device-verified. The Watch remains on the earlier
-dev.9 package until a current wireless-debugging endpoint is supplied. Do not claim the
-bottom-centred control or live add/remove behavior as real-device accepted yet.
+The newly supplied endpoint `192.168.12.126:44703` accepted a data-preserving
+`adb install --no-streaming -r`; the device readback is `0.3.0-dev.11` / code 15. A cold launch
+reached the normal Ready screen (`sayit-dev11-home.png`, SHA-256
+`C7AAE753D03FD34561FFBF0A33A94149365BFC1C539E6D34E8CBC25CFA6B9DC7`). System rotation was
+read-only checked as `accelerometer_rotation=0` and `user_rotation=0` before the UI attempt.
+
+The Watch then entered Doze and its wireless-debugging mDNS service disappeared; port 44703 now
+refuses connections. The local receiver at `.142:18099` remains reachable (unauthenticated probe
+returns the expected 401), while the second laptop `.153:18099` is unreachable. Therefore the
+bottom-centred close control and two-computer live add/remove round trip remain **not device
+accepted**. Blurred/black transition captures were discarded rather than represented as evidence.
 
 No Windows receiver, discovery protocol, authentication policy, upload/recording path, Provider,
 ASR, History, Paste, credentials, Release, push, merge, or tag changed.
