@@ -29,6 +29,12 @@
 - 随后显式切回 `.142` 并恢复 Ready；重新打开选择器读回 `.142` 为当前电脑。收尾证据截图 SHA-256 `F92228D806967A8FD99097F01F51A4DC8D1B371AD662630C88BBB88812F21D7F`，XML SHA-256 `28E87CA7E99428E3231621483EFFCCCBE11B1445B53B55EECC52C40C3AC0F6AD`。
 - ADB 注入触摸不会像真实手指一样延长亮屏，第一次点选被设备 Doze 生命周期正确取消。为完成自动化点选，测试时临时模拟充电保持亮屏；结束后已执行 battery reset，并把 `screen_off_timeout` 恢复为 60000、`stay_on_while_plugged_in` 恢复为 15。该测试条件不计作产品缺陷或成功证据。
 
+## 旋转状态跟进
+
+- 用户在本轮验收后报告界面再次旋转。现场 `dumpsys` 证明不是应用传感器逻辑：设备全局为 `USER_ROTATION_LOCKED / ROTATION_90`，系统界面和 SayIt 共用同一 90°显示；SayIt Activity 仍正确请求 `SCREEN_ORIENTATION_PORTRAIT`。WindowManager 历史把该锁定变更归因到本轮使用的 `UiAutomationConnection#restoreRotationStateLocked`，属于验收工具留下的设备状态。
+- PM 执行 `wm user-rotation lock 0` 精确恢复全局 0°锁定；复验为 `mRotation=0`、`mCurrentRotation=ROTATION_0`、`USER_ROTATION_LOCKED / ROTATION_0`，SayIt 为前台且继续请求 Portrait。恢复截图 `docs/evidence/R12-20260926/r12-rotation-restored.png`，SHA-256 `C7AAE753D03FD34561FFBF0A33A94149365BFC1C539E6D34E8CBC25CFA6B9DC7`。
+- 本项没有新增产品源码修改。后续真机验收不得把 `uiautomator dump` 当作无副作用读取；如必须使用，前后都要核对并恢复 `wm user-rotation`。真实手腕旋转是否保持 0°仍由用户现场观察确认。
+
 ## 状态边界
 
 - R12-B 的“双电脑发现、即时显示、显式选择、回切”已通过；R11 的取消/返回门槛保持既有通过证据。
