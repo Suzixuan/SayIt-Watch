@@ -1,5 +1,13 @@
 # SayIt Watch Transport handoff
 
+## 电脑身份选择器实施与真机检查：1C-PM-UI-02@R1（2026-09-26，dev.8）
+
+- 用户确认先做出来看。PM 以冻结候选 `design/watch-ui/0.3.0-dev.2-candidate.2/` 为父版，只修改 Watch 选择器、相关字符串/测试和版本号；Windows、发现/认证、目标选择、录音/上传及 Provider/ASR/History/Paste 均未改。
+- dev.8/code 12 将主身份改为真实端点生成的 `电脑 · <IPv4 末段>`，卡片次行显示当前/在线/验证中状态和短 IP；当前项同时使用文字、蓝色和勾选，搜索中已认证候选即时出现但保持不可点，窗口结束后才可显式选择。完整自定义昵称仍未伪造，等待将来经过认证的可选 `deviceId/displayName/deviceType` 契约。
+- PM 最终全量 26 suites / 242 tests / 0 failures / 0 errors / 0 skipped，lint 0 error / 38 warnings，Debug build 成功；APK SHA-256 `C6A1ABB905542C6F6CE22802CAA76B91CAA1B3B84F6D1F8C53EFAAD38F27646E`。保留数据覆盖安装 Success，设备读回 `0.3.0-dev.8`/code 12。
+- Galaxy Watch 7 两台真实电脑同时在线：搜索中已显示 `.142` 当前与 `.153` 验证候选，完成态显示 2 台可用；显式点 `.153` 后当前勾选移到 `.153`，再点 `.142` 恢复 Ready。正式 APK 视觉截图及分层证据见 `docs/evidence/1C-PM-UI-02-R1/`。系统旋转前后均为 0，未写旋转设置。
+- 自动坐标复验中有一次在已返回 Ready 后误触麦克风；已立即点可见“取消”，未点结束、未触发上传，相关临时图不纳入验收。最终手表保持 `.142` Ready。无 push/merge/tag/Release；R12-C/D/E 未验证项保持开放。
+
 ## R12-B 双电脑即时发现与显式切换：1C-PM-R12-B@R1（2026-09-26，通过）
 
 - 用户真实反馈“重新搜索仍看不到第二台笔记本”。PM 现场确认两台 Windows 端都可达，Watch 修复前同一轮已经发现、解析并认证两个端点，最终为 `verdict:ambiguous`；失败边界是已认证候选只在完整 8 秒窗口结束后一次性发布。连续点“重新搜索”会取消旧轮并重新计时，所以界面长期只显示当前电脑。

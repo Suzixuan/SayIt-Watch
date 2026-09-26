@@ -237,15 +237,15 @@ class RecordingReadyEntryR5Test {
             "discovery_awaiting",
             "discovery_none_yet",
             "discovery_manual",
-            // 1C-D-04@R7 §2B: the switch page's current-computer line and short labels.
-            "switch_current_section",
-            "switch_current_computer",
-            "switch_other_computer",
-            "switch_dialog_hint",
+            // 1C-PM-UI-02@R1: human identity, availability and authenticated-progress labels.
             "switch_search_again",
-            "switch_searching",
-            "discovery_current_missing",
-            "action_back",
+            "switch_restart_search",
+            "switch_available_count",
+            "switch_searching_count",
+            "switch_status_current",
+            "switch_status_online",
+            "switch_status_offline",
+            "switch_status_verified_wait",
         )) {
             assertTrue("missing string resource: $name", strings.contains("name=\"$name\""))
         }

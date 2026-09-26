@@ -25,6 +25,7 @@
 
     <!-- Delivery 1C automatic discovery status -->
     <string name="discovery_searching">正在连接…</string>
+    <string name="discovery_current_missing">未连接</string>
     <string name="discovery_saved_neutral">已连接电脑</string>
     <string name="discovery_awaiting">等待认证结果…</string>
     <string name="discovery_none_yet">正在连接…</string>
@@ -48,14 +49,12 @@
     <string name="ready_search_computer">搜索电脑</string>
     <string name="ready_entry_searching">正在搜索电脑…</string>
     <string name="switch_dialog_title">选择电脑</string>
+    <string name="switch_dialog_hint">点选要使用的那一台</string>
+    <string name="switch_current_computer">当前使用</string>
+    <string name="switch_current_section">当前电脑</string>
+    <string name="switch_other_computer">可选电脑</string>
     <string name="switch_search_again">重新搜索</string>
-    <string name="switch_restart_search">重新开始</string>
-    <string name="switch_available_count">%1$d 台可用</string>
-    <string name="switch_searching_count">仍在搜索 · 已找到 %1$d 台</string>
-    <string name="switch_status_current">当前 · %1$s</string>
-    <string name="switch_status_online">在线 · %1$s</string>
-    <string name="switch_status_offline">未连接 · %1$s</string>
-    <string name="switch_status_verified_wait">已验证 · 搜索结束后可选</string>
+    <string name="switch_searching">正在搜索…</string>
 
     <!-- Recording -->
     <string name="recording_stop">结束录音</string>
@@ -64,6 +63,7 @@
     <!-- Actions / status -->
     <string name="action_ok">确定</string>
     <string name="action_cancel">取消</string>
+    <string name="action_back">返回</string>
     <string name="action_show">展开</string>
     <string name="action_hide">收起</string>
 </resources>

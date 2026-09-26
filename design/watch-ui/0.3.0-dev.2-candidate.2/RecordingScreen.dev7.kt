@@ -466,245 +466,117 @@ internal fun readyStatusTextRes(
     else -> R.string.discovery_none_yet
 }
 
-/** Human-readable fallback until an authenticated desktop supplies an optional nickname. */
-internal fun computerFallbackName(ip: String): String {
-    val octets = ip.split('.')
-    val suffix = octets.takeIf {
-        it.size == 4 && it.all { octet -> octet.toIntOrNull()?.let { value -> value in 0..255 } == true }
-    }?.last()
-    return suffix?.let { "电脑 · $it" } ?: "电脑"
-}
+/**
+ * 1C-D-04@R7 §2B — the "current computer" line of the switch page.
+ *
+ * The address on screen is the REAL address in use, taken from the authenticated
+ * target rather than from the saved field, and it is shown even when the computer is
+ * not in the discovered list. With no usable target the line says "未连接" instead of
+ * a stale address.
+ *
+ * @return the text to show, or null when the caller must render
+ *   [R.string.discovery_current_missing].
+ */
+internal fun currentTargetAddressText(target: DiscoverySelection?, connected: Boolean): String? =
+    if (target != null && connected) "${target.ip}:${target.port}" else null
 
 /**
- * 1C-PM-UI-02@R1 — the explicit "switch computer" picker.
+ * 1C-D-04@R2/R7 — the explicit "switch computer" picker.
  *
- * A machine-like `IP:port` is no longer the visual identity. Until the authenticated
- * desktop response carries optional friendly metadata, each real RFC1918 endpoint gets a
- * deterministic fallback name (`电脑 · 142`) and the IP remains secondary diagnostics.
+ * 1C-D-04@R7 §2B changes:
+ * - the current computer and its REAL `IP:port` are pinned at the top of the page,
+ *   independent of the candidate list, so they are visible even when the computer in
+ *   use is not in the discovered list (or the list is still empty);
+ * - the long fixed "these computers have all been verified" paragraph is gone: the
+ *   header is the state (`当前电脑` / `正在搜索…` / `未找到电脑`) plus short row labels;
+ * - a candidate is only ever adopted by the user tapping it — the browse can no longer
+ *   switch the computer on its own.
  *
- * The R7 interaction contract is unchanged: progress candidates stay visible but disabled
- * until the bounded browse ends, and only an explicit tap changes the selected target.
+ * The address is shown purely so the user can tell two PCs apart; it is never logged,
+ * never broadcast and never sent anywhere.
  */
 @Composable
 private fun ComputerSwitchDialog(viewModel: RecordingViewModel, ui: WatchUiState) {
     val current = ui.currentTarget
     val connected = ui.connected && ui.transportAvailable == true
+    val currentText = currentTargetAddressText(current, connected)
     val entries = viewModel.switchEntries()
+    // A connected current target that is not in the discovered list still gets a row,
+    // so "which computer am I on" is never answered by an empty page.
     val rows = if (entries.isEmpty() && current != null) listOf(SwitchEntry(current, true)) else entries
-    val availableCount = rows.count { !it.isCurrent || connected }
-    val noCandidate = !ui.switchSearching && availableCount == 0
+    val noCandidate = !ui.switchSearching && rows.isEmpty()
 
-    Dialog(
-        onDismissRequest = { viewModel.dismissSwitchPicker() },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
+    Dialog(onDismissRequest = { viewModel.dismissSwitchPicker() }) {
         Column(
-            Modifier.fillMaxSize()
+            Modifier.fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .background(Color(0xFF12161D))
-                .padding(horizontal = 12.dp, vertical = 7.dp)
+                .background(PanelSurface, RoundedCornerShape(18.dp))
+                .padding(horizontal = 12.dp, vertical = 14.dp)
                 .selectableGroup(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    stringResource(R.string.switch_dialog_title),
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                )
-                SwitchCloseAction(
-                    onClick = { viewModel.dismissSwitchPicker() },
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                )
-            }
+            Text(stringResource(R.string.switch_current_section), fontSize = 9.sp, color = MutedText)
+            Spacer(Modifier.height(3.dp))
+            Text(
+                currentText ?: stringResource(R.string.discovery_current_missing),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (currentText != null) Color.White else WarningRed,
+                maxLines = 1,
+            )
+            Spacer(Modifier.height(10.dp))
             Text(
                 when {
-                    ui.switchSearching -> stringResource(R.string.switch_searching_count, availableCount)
+                    ui.switchSearching -> stringResource(R.string.switch_searching)
                     noCandidate -> stringResource(R.string.discovery_none_yet)
-                    else -> stringResource(R.string.switch_available_count, availableCount)
+                    else -> stringResource(R.string.switch_dialog_hint)
                 },
                 fontSize = 9.sp,
                 color = if (noCandidate) WarningRed else MutedText,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             rows.forEach { entry ->
-                SwitchComputerCard(
-                    entry = entry,
-                    connected = connected,
-                    searching = ui.switchSearching,
-                    onClick = { viewModel.onTargetPicked(entry.target) },
-                )
-                Spacer(Modifier.height(5.dp))
+                Column(
+                    Modifier.fillMaxWidth()
+                        .selectable(
+                            selected = entry.isCurrent,
+                            // Progress rows arrive before the complete 8 s window
+                            // closes. Keep them visible as feedback, but wait for the
+                            // collector to stop before a pick so closing the dialog can
+                            // never leave a hidden NSD browse behind it.
+                            enabled = !ui.switchSearching,
+                            onClick = { viewModel.onTargetPicked(entry.target) },
+                        )
+                        .background(if (entry.isCurrent) SayItBlue else FieldSurface, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        stringResource(
+                            if (entry.isCurrent) R.string.switch_current_computer else R.string.switch_other_computer,
+                        ),
+                        fontSize = 9.sp,
+                        color = if (entry.isCurrent) Color.White else MutedText,
+                    )
+                    Text("${entry.target.ip}:${entry.target.port}", fontSize = 13.sp, color = Color.White, maxLines = 1)
+                }
+                Spacer(Modifier.height(6.dp))
             }
-            SwitchRefreshAction(
-                label = stringResource(
-                    if (ui.switchSearching) R.string.switch_restart_search else R.string.switch_search_again,
-                ),
-                onClick = { viewModel.requestSwitch() },
+            Spacer(Modifier.height(4.dp))
+            PillAction(
+                stringResource(R.string.switch_search_again),
+                { viewModel.requestSwitch() },
+                Modifier.fillMaxWidth(),
+                background = SayItBlue,
             )
-        }
-    }
-}
-
-@Composable
-private fun SwitchComputerCard(
-    entry: SwitchEntry,
-    connected: Boolean,
-    searching: Boolean,
-    onClick: () -> Unit,
-) {
-    val enabled = !searching
-    val foreground = if (enabled || entry.isCurrent) Color.White else Color(0xFF788392)
-    val secondary = when {
-        entry.isCurrent && connected -> stringResource(R.string.switch_status_current, entry.target.ip)
-        entry.isCurrent -> stringResource(R.string.switch_status_offline, entry.target.ip)
-        searching -> stringResource(R.string.switch_status_verified_wait)
-        else -> stringResource(R.string.switch_status_online, entry.target.ip)
-    }
-    Row(
-        Modifier.fillMaxWidth()
-            .heightIn(min = 50.dp)
-            .selectable(
-                selected = entry.isCurrent,
-                enabled = enabled,
-                onClick = onClick,
+            Spacer(Modifier.height(8.dp))
+            PillAction(
+                stringResource(R.string.action_back),
+                { viewModel.dismissSwitchPicker() },
+                Modifier.fillMaxWidth(),
+                background = FieldSurface,
             )
-            .background(
-                when {
-                    entry.isCurrent -> Color(0xFF247CF0)
-                    enabled -> PanelSurface
-                    else -> Color(0xFF1B2028)
-                },
-                RoundedCornerShape(16.dp),
-            )
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SwitchComputerGlyph(active = entry.isCurrent, foreground = foreground)
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                computerFallbackName(entry.target.ip),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = foreground,
-                maxLines = 1,
-            )
-            Text(secondary, fontSize = 9.sp, color = if (entry.isCurrent) Color.White else MutedText, maxLines = 1)
-        }
-        if (entry.isCurrent) {
-            SwitchCurrentCheck()
-        } else {
-            Text("›", fontSize = 22.sp, color = foreground)
-        }
-    }
-}
-
-@Composable
-private fun SwitchComputerGlyph(active: Boolean, foreground: Color) {
-    Box(
-        Modifier.size(28.dp)
-            .background(if (active) Color(0xFF1858B5) else FieldSurface, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.size(16.dp)) {
-            drawRoundRect(
-                color = foreground,
-                topLeft = Offset(size.width * 0.13f, size.height * 0.08f),
-                size = Size(size.width * 0.74f, size.height * 0.62f),
-                cornerRadius = CornerRadius(size.width * 0.09f),
-                style = Stroke(width = 1.5.dp.toPx()),
-            )
-            drawLine(
-                color = foreground,
-                start = Offset(size.width * 0.5f, size.height * 0.7f),
-                end = Offset(size.width * 0.5f, size.height * 0.87f),
-                strokeWidth = 1.5.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-            drawLine(
-                color = foreground,
-                start = Offset(size.width * 0.25f, size.height * 0.89f),
-                end = Offset(size.width * 0.75f, size.height * 0.89f),
-                strokeWidth = 1.5.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SwitchCurrentCheck() {
-    Box(Modifier.size(24.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(14.dp)) {
-            drawLine(
-                color = SayItBlue,
-                start = Offset(size.width * 0.12f, size.height * 0.52f),
-                end = Offset(size.width * 0.42f, size.height * 0.80f),
-                strokeWidth = 2.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-            drawLine(
-                color = SayItBlue,
-                start = Offset(size.width * 0.42f, size.height * 0.80f),
-                end = Offset(size.width * 0.90f, size.height * 0.20f),
-                strokeWidth = 2.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SwitchCloseAction(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.size(48.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(28.dp).background(PanelSurface, CircleShape), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.size(12.dp)) {
-                drawLine(MutedText, Offset.Zero, Offset(size.width, size.height), 1.8.dp.toPx(), StrokeCap.Round)
-                drawLine(MutedText, Offset(size.width, 0f), Offset(0f, size.height), 1.8.dp.toPx(), StrokeCap.Round)
-            }
-        }
-    }
-}
-
-@Composable
-private fun SwitchRefreshAction(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier.fillMaxWidth().height(48.dp).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(
-            Modifier.fillMaxWidth(0.64f).height(36.dp).background(Color(0xFF247CF0), RoundedCornerShape(20.dp)),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Canvas(Modifier.size(16.dp)) {
-                drawArc(
-                    color = Color.White,
-                    startAngle = 20f,
-                    sweepAngle = 300f,
-                    useCenter = false,
-                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
-                )
-                drawLine(
-                    Color.White,
-                    Offset(size.width * 0.88f, size.height * 0.18f),
-                    Offset(size.width * 0.62f, size.height * 0.15f),
-                    2.dp.toPx(),
-                    StrokeCap.Round,
-                )
-                drawLine(
-                    Color.White,
-                    Offset(size.width * 0.88f, size.height * 0.18f),
-                    Offset(size.width * 0.85f, size.height * 0.43f),
-                    2.dp.toPx(),
-                    StrokeCap.Round,
-                )
-            }
-            Spacer(Modifier.width(6.dp))
-            Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
