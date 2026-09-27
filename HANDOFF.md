@@ -1,5 +1,9 @@
 # SayIt Watch Transport handoff
 
+## 低功耗录音界面候选：0.3.0-dev.3-candidate.1（2026-09-26，待视觉确认）
+
+- 用户要求先查看“计时降为 1 Hz + 波形短暂动画后静止”和“黑底低功耗录音界面”的外观。候选已冻结在 `design/watch-ui/0.3.0-dev.3-candidate.1/`：保留录音页中心停止、取消丢弃、四个蓝色方位刻度和保持亮屏的可靠录音路径；改为近黑表盘、稀疏暗刻度、常亮录音圆点和静态蓝色波形。`02-one-hz-timer.png` 展示连续两秒仅计时变化，`03-before-after.png` 展示现状与候选对比。当前状态为 `candidate`，尚未改正式资源、产品源码或 APK；省电幅度与真机效果均未测量，须视觉确认后才可实施。
+
 ## Watch 录音 AI 整理修复：dev.15（2026-09-26，Watch7 真机端到端通过）
 
 - 根因已确认：Delivery 1B 在 `RecorderOrchestrator.beginExternalRun` 和外部录音 finalize 中硬编码 `disableAi: true`，所以原版与通用 Wear OS 版的 Watch 录音都会绕过 AI；这不是 dev.14 新引入的问题。用户于 2026-09-26 明确纠正该产品行为，旧任务文件保留为历史，但 Provider Contract 已标记该 AI-off 条款被取代。
