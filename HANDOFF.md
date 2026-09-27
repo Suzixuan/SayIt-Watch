@@ -4,7 +4,7 @@
 
 - 用户要求在「连接设置」中配置低功耗切换秒数；Watch dev.16/code 20 已实现默认 10 秒、有效范围 1–180 秒，阈值前保留亮色动画、阈值后黑底静态波形与 1 Hz 计时。真机测试确认设置保存/冷启动持久化、5 秒亮界面、12 秒暗界面、取消返回 Ready；重叠底部刻度的首次修正版保留为否决图，最终布局通过。视觉与原始 A/B 证据冻结于 `design/watch-ui/0.3.0-dev.3-candidate.2/`，旧候选和 dev.15 基线保持不变。
 - 同一 dev.16 二进制在 Watch7 上做 165 秒 A/B：阈值 180 秒与 10 秒的电量计均显示消耗 3.692 mAh；30 秒渲染帧数 1815→632，表温变化分别为 +3.0°C 与 +0.1°C。可以确认渲染量与本次温升有差异；续航收益需长期观察。用户已明确结束本轮测量。自动亮度已恢复、0° 方向锁定、阈值留在 10 秒。
-- 30 suites / 258 tests / 0 failures，lint 0 errors / 38 warnings，Debug/Release APK 构建通过。最终 Debug APK 21,126,192 bytes，SHA-256 `95B0BD3BA2096805685AF0BF26C83282D4A52F920E4919274D559F1B2E6DEE5C`，已保留数据安装在 Galaxy Watch7。README 和发布包更新至 dev.16 的 GitHub 交付在本轮进行；包内 Windows EXE 继续采用已验收 dev.15 AI 修复构建，桌面产品源码没有新变化。
+- 30 suites / 258 tests / 0 failures，lint 0 errors / 38 warnings，Debug/Release APK 构建通过。最终 Debug APK 21,126,192 bytes，SHA-256 `95B0BD3BA2096805685AF0BF26C83282D4A52F920E4919274D559F1B2E6DEE5C`，已保留数据安装在 Galaxy Watch7。PR #8 经 CodeQL 通过后合入公开 `main`，合并提交 `e4e0b282795001bae5586b3ebd704fc5ee72b976`；GitHub Latest 为 [`v0.3.0-dev.16`](https://github.com/Suzixuan/SayIt-Watch/releases/tag/v0.3.0-dev.16)。ZIP 25,084,611 bytes / SHA-256 `1C144FDABB8F2468668BF7EF0F8FCD111776E377209E188719369D1B6CB1594F`，独立 APK 21,126,192 bytes / SHA-256 `95B0BD3BA2096805685AF0BF26C83282D4A52F920E4919274D559F1B2E6DEE5C`；GitHub digest 已核对，ZIP 内 33 条 payload 哈希全部通过。包内 Windows EXE 继续采用已验收 dev.15 AI 修复构建，桌面产品源码没有新变化。
 
 ## 低功耗录音界面候选：0.3.0-dev.3-candidate.1（2026-09-26，待视觉确认）
 
