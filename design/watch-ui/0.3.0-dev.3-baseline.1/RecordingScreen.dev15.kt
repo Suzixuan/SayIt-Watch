@@ -62,7 +62,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,7 +76,6 @@ import com.sayit.watch.recording.WavWriter
 import com.sayit.watch.settings.DestinationValidator
 import com.sayit.watch.settings.DevTokenValidator
 import com.sayit.watch.settings.ComputerAliasPolicy
-import com.sayit.watch.settings.LowPowerRecordingPolicy
 import com.sayit.watch.settings.SettingsStore
 import kotlin.math.cos
 import kotlin.math.sin
@@ -209,10 +207,7 @@ fun RecordingScreen(viewModel: RecordingViewModel, settings: SettingsStore, hasP
             when (ui.screen) {
                 WatchUiState.Screen.CONFIG -> ConfigScreen(viewModel, settings, ui)
                 WatchUiState.Screen.READY -> ReadyScreen(viewModel, settings, ui, discovery, canRecord, hasPermission, onRequestPermission)
-                WatchUiState.Screen.RECORDING -> RecordingActiveScreen(
-                    viewModel,
-                    settings.lowPowerAfterSeconds,
-                )
+                WatchUiState.Screen.RECORDING -> RecordingActiveScreen(viewModel)
             }
         }
     }
@@ -223,27 +218,17 @@ private fun ConfigScreen(viewModel: RecordingViewModel, settings: SettingsStore,
     var ipText by remember { mutableStateOf(settings.receiverIp) }
     var portText by remember { mutableStateOf(settings.receiverPort) }
     var tokenText by remember { mutableStateOf(settings.devToken) }
-    var lowPowerAfterText by remember { mutableStateOf(settings.lowPowerAfterSeconds.toString()) }
     var tokenRevealed by remember { mutableStateOf(false) }
     var editingToken by remember { mutableStateOf(false) }
     // Delivery 1C: only the token is mandatory. The manual address fields open
     // when the user asks for them or when automatic discovery gave up.
     val manualOpen = ui.manualOpen
-    val lowPowerAfterSeconds = LowPowerRecordingPolicy.parseSeconds(lowPowerAfterText)
-    val canApply = DevTokenValidator.isValid(tokenText) && lowPowerAfterSeconds != null &&
+    val canApply = DevTokenValidator.isValid(tokenText) &&
         (!manualOpen || ipText.isBlank() || DestinationValidator.validate(ipText, portText) is DestinationValidator.ValidationResult.Valid)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = WatchUiMetrics.ScreenSidePaddingDp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(stringResource(R.string.screen_config_title), fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(14.dp))
         FieldCard(stringResource(R.string.config_dev_token), if (tokenText.isEmpty()) stringResource(R.string.config_tap_to_edit) else if (tokenRevealed) tokenText else maskToken(tokenText), if (tokenRevealed) stringResource(R.string.config_hide_token) else stringResource(R.string.config_show_token), { editingToken = true }) { tokenRevealed = !tokenRevealed }
-        Spacer(Modifier.height(10.dp))
-        SettingsField(
-            stringResource(R.string.config_low_power_after),
-            lowPowerAfterText,
-            keyboardType = KeyboardType.Number,
-        ) { lowPowerAfterText = it.filter(Char::isDigit) }
-        Spacer(Modifier.height(6.dp))
-        Text(stringResource(R.string.config_low_power_hint), fontSize = 9.sp, color = MutedText, textAlign = TextAlign.Center)
         Spacer(Modifier.height(10.dp))
         FieldCard(
             stringResource(R.string.config_manual_settings),
@@ -259,27 +244,8 @@ private fun ConfigScreen(viewModel: RecordingViewModel, settings: SettingsStore,
         Spacer(Modifier.height(10.dp))
         Text(stringResource(R.string.config_manual_hint), fontSize = 9.sp, color = MutedText, textAlign = TextAlign.Center)
         Spacer(Modifier.height(14.dp))
-        PillAction(
-            stringResource(R.string.config_save_apply),
-            {
-                settings.lowPowerAfterSeconds = checkNotNull(lowPowerAfterSeconds)
-                viewModel.applySettings(ipText, portText, tokenText)
-            },
-            Modifier.fillMaxWidth(),
-            enabled = canApply,
-        )
-        if (!canApply) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(
-                    if (lowPowerAfterSeconds == null) R.string.config_low_power_validation
-                    else R.string.config_validation_hint,
-                ),
-                fontSize = 10.sp,
-                color = MutedText,
-                textAlign = TextAlign.Center,
-            )
-        }
+        PillAction(stringResource(R.string.config_save_apply), { viewModel.applySettings(ipText, portText, tokenText) }, Modifier.fillMaxWidth(), enabled = canApply)
+        if (!canApply) { Spacer(Modifier.height(8.dp)); Text(stringResource(R.string.config_validation_hint), fontSize = 10.sp, color = MutedText, textAlign = TextAlign.Center) }
     }
     if (editingToken) WearTextInputDialog(stringResource(R.string.config_dev_token), tokenText, { tokenText = it; editingToken = false }, { editingToken = false })
 }
@@ -896,71 +862,15 @@ internal fun discoveryLabel(state: DiscoveryState, hasVerifiedTarget: Boolean): 
     is DiscoveryState.Idle -> if (hasVerifiedTarget) "已连接电脑" else "尚未找到电脑"
 }
 
-internal fun isLowPowerRecording(
-    sampleCount: Int,
-    afterSeconds: Int,
-    sampleRate: Int = WavWriter.SAMPLE_RATE,
-): Boolean {
-    val safeDelay = LowPowerRecordingPolicy.sanitizeStored(afterSeconds)
-    return sampleCount.toLong() >= safeDelay.toLong() * sampleRate
-}
-
 @Composable
-private fun RecordingActiveScreen(viewModel: RecordingViewModel, lowPowerAfterSeconds: Int) {
-    val sampleCount by viewModel.visibleSampleCount.collectAsState()
-    if (isLowPowerRecording(sampleCount, lowPowerAfterSeconds)) {
-        LowPowerWatchDial {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Row(
-                    Modifier.align(Alignment.Center).offset(y = (-56).dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Canvas(Modifier.size(6.dp)) { drawCircle(SayItBlue) }
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        stringResource(R.string.dial_title_recording),
-                        fontSize = 9.sp,
-                        color = LowPowerMuted,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 1.5.sp,
-                    )
-                }
-                StaticRecordingWaveform(
-                    SayItBlue,
-                    Modifier.size(width = 156.dp, height = 46.dp).align(Alignment.Center)
-                        .clickable { viewModel.stopRecording() },
-                )
-                Text(
-                    formatRecordingDurationFromSamples(sampleCount),
-                    fontSize = 20.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.Center).offset(y = 52.dp),
-                )
-                Text(
-                    stringResource(R.string.recording_stop_hint),
-                    fontSize = 7.sp,
-                    color = LowPowerMuted,
-                    modifier = Modifier.align(Alignment.Center).offset(y = 76.dp),
-                )
-                Box(
-                    Modifier.align(Alignment.Center).offset(y = 86.dp).width(96.dp).heightIn(min = 30.dp)
-                        .clickable { viewModel.cancelRecording() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(stringResource(R.string.recording_cancel_discard), fontSize = 8.sp, color = LowPowerDim)
-                }
-            }
-        }
-    } else {
-        WatchDial {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.dial_title_recording), fontSize = 9.sp, color = DialMuted, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp, modifier = Modifier.align(Alignment.Center).offset(y = -56.dp))
-                RecordingWaveform(SayItBlue, Modifier.size(width = 156.dp, height = 46.dp).align(Alignment.Center).clickable { viewModel.stopRecording() })
-                Text(formatRecordingDurationFromSamples(sampleCount), fontSize = 20.sp, color = DialIcon, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center).offset(y = 52.dp))
-                Text(stringResource(R.string.recording_cancel_hint), fontSize = 8.sp, color = DialMuted, modifier = Modifier.align(Alignment.Center).offset(y = 84.dp).clickable { viewModel.cancelRecording() })
-            }
+private fun RecordingActiveScreen(viewModel: RecordingViewModel) {
+    val sampleCount by viewModel.sampleCount.collectAsState()
+    WatchDial {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(stringResource(R.string.dial_title_recording), fontSize = 9.sp, color = DialMuted, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp, modifier = Modifier.align(Alignment.Center).offset(y = -56.dp))
+            RecordingWaveform(SayItBlue, Modifier.size(width = 156.dp, height = 46.dp).align(Alignment.Center).clickable { viewModel.stopRecording() })
+            Text(formatRecordingDurationFromSamples(sampleCount), fontSize = 20.sp, color = DialIcon, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center).offset(y = 52.dp))
+            Text(stringResource(R.string.recording_cancel_hint), fontSize = 8.sp, color = DialMuted, modifier = Modifier.align(Alignment.Center).offset(y = 84.dp).clickable { viewModel.cancelRecording() })
         }
     }
 }
@@ -971,10 +881,6 @@ private val DialFace = Color(0xFFF6F7F9)
 private val DialTick = Color(0xFF1C1E22)
 private val DialIcon = Color(0xFF1C1E22)
 private val DialMuted = Color(0xFF9AA3AE)
-private val LowPowerFace = Color(0xFF030508)
-private val LowPowerTick = Color(0xFF4B5562)
-private val LowPowerMuted = Color(0xFF949EAC)
-private val LowPowerDim = Color(0xFF4B5562)
 
 @Composable
 private fun WatchDial(content: @Composable BoxScope.() -> Unit) {
@@ -986,19 +892,6 @@ private fun WatchDial(content: @Composable BoxScope.() -> Unit) {
             val radius = minOf(size.width, size.height) / 2f
             drawCircle(DialFace, radius, center)
             drawDialTicks(center, radius)
-        }
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
-    }
-}
-
-@Composable
-private fun LowPowerWatchDial(content: @Composable BoxScope.() -> Unit) {
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Canvas(Modifier.fillMaxSize()) {
-            val center = Offset(size.width / 2f, size.height / 2f)
-            val radius = minOf(size.width, size.height) / 2f
-            drawCircle(LowPowerFace, radius, center)
-            drawLowPowerDialTicks(center, radius)
         }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
     }
@@ -1019,24 +912,6 @@ private fun DrawScope.drawDialTicks(center: Offset, radius: Float) {
             color = if (major) SayItBlue else DialMuted,
             start = center + dir * outer,
             end = end,
-            strokeWidth = if (major) radius * 0.030f else radius * 0.008f,
-            cap = StrokeCap.Round,
-        )
-    }
-}
-
-private fun DrawScope.drawLowPowerDialTicks(center: Offset, radius: Float) {
-    val outer = radius * 0.99f
-    val minorInner = radius * 0.945f
-    val majorInner = radius * 0.87f
-    repeat(24) { i ->
-        val angle = i * 15.0 * Math.PI / 180.0
-        val dir = Offset(cos(angle).toFloat(), sin(angle).toFloat())
-        val major = i % 6 == 0
-        drawLine(
-            color = if (major) SayItBlue else LowPowerTick,
-            start = center + dir * outer,
-            end = center + dir * (if (major) majorInner else minorInner),
             strokeWidth = if (major) radius * 0.030f else radius * 0.008f,
             cap = StrokeCap.Round,
         )
@@ -1070,43 +945,10 @@ private fun RecordingWaveform(color: Color, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StaticRecordingWaveform(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val relativeHeights = floatArrayOf(0.24f, 0.43f, 0.61f, 0.81f, 1.0f, 0.81f, 0.61f, 0.43f, 0.24f)
-        val gap = size.width / relativeHeights.size
-        val midY = size.height / 2f
-        val maxHeight = size.height * 0.80f
-        val barWidth = gap * 0.30f
-        relativeHeights.forEachIndexed { index, relativeHeight ->
-            val halfHeight = maxHeight * relativeHeight / 2f
-            val x = gap * index + gap / 2f
-            drawLine(
-                color,
-                Offset(x, midY - halfHeight),
-                Offset(x, midY + halfHeight),
-                barWidth,
-                StrokeCap.Round,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsField(
-    label: String,
-    value: String,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    onChange: (String) -> Unit,
-) {
+private fun SettingsField(label: String, value: String, onChange: (String) -> Unit) {
     var editing by remember { mutableStateOf(false) }
     FieldCard(label, if (value.isEmpty()) stringResource(R.string.config_tap_to_edit) else value, onClick = { editing = true })
-    if (editing) WearTextInputDialog(
-        label,
-        value,
-        { onChange(it); editing = false },
-        { editing = false },
-        keyboardType,
-    )
+    if (editing) WearTextInputDialog(label, value, { onChange(it); editing = false }, { editing = false })
 }
 
 @Composable
@@ -1118,20 +960,14 @@ private fun FieldCard(label: String, value: String, trailing: String? = null, on
 }
 
 @Composable
-private fun WearTextInputDialog(
-    label: String,
-    initialValue: String,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
-    keyboardType: KeyboardType = KeyboardType.Text,
-) {
+private fun WearTextInputDialog(label: String, initialValue: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(initialValue) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     Dialog(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().background(PanelSurface, RoundedCornerShape(18.dp)).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, fontSize = 13.sp, color = MutedText); Spacer(Modifier.height(8.dp))
-            BasicTextField(value = text, onValueChange = { text = it }, singleLine = true, textStyle = TextStyle(fontSize = 14.sp, textAlign = TextAlign.Center, color = Color.White), keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); onConfirm(text) }), modifier = Modifier.fillMaxWidth().background(FieldSurface, RoundedCornerShape(10.dp)).padding(10.dp).focusRequester(focusRequester))
+            BasicTextField(value = text, onValueChange = { text = it }, singleLine = true, textStyle = TextStyle(fontSize = 14.sp, textAlign = TextAlign.Center, color = Color.White), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide(); onConfirm(text) }), modifier = Modifier.fillMaxWidth().background(FieldSurface, RoundedCornerShape(10.dp)).padding(10.dp).focusRequester(focusRequester))
             Spacer(Modifier.height(12.dp))
             PillAction(stringResource(R.string.action_ok), { keyboard?.hide(); onConfirm(text) }, Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))

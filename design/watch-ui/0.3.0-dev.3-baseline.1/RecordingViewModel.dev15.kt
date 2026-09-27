@@ -381,10 +381,6 @@ class RecordingViewModel(
     private val _sampleCount = MutableStateFlow(0)
     val sampleCount: StateFlow<Int> = _sampleCount.asStateFlow()
 
-    private val progressPublisher = RecordingProgressPublisher(WavWriter.SAMPLE_RATE)
-    private val _visibleSampleCount = MutableStateFlow(0)
-    val visibleSampleCount: StateFlow<Int> = _visibleSampleCount.asStateFlow()
-
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
@@ -624,9 +620,6 @@ class RecordingViewModel(
     private fun syncState() {
         _state.value = session.state
         _sampleCount.value = session.sampleCount
-        if (session.state != RecordingSession.State.RECORDING) {
-            _visibleSampleCount.value = session.sampleCount
-        }
         _lastError.value = session.lastError
         _canSend.value = session.canSend()
     }
@@ -1158,8 +1151,6 @@ class RecordingViewModel(
         session.startRecording()
         val generation = requestLatch.begin()
         recordingActive = true
-        progressPublisher.reset()
-        _visibleSampleCount.value = 0
         syncState()
         uiEvent(WatchUiStateMachine::recordingStarted)
         vibrate(RecordingSession.State.RECORDING)
@@ -1173,14 +1164,9 @@ class RecordingViewModel(
                         maxDurationSec * 1000,
                         { recordingActive },
                         { bytes, _ -> pcm.write(bytes) },
-                        // Preserve the exact internal count on every read, but only wake
-                        // Compose when a new whole second becomes visible.
-                        { cumulative ->
-                            _sampleCount.value = cumulative
-                            progressPublisher.next(cumulative)?.let { visible ->
-                                _visibleSampleCount.value = visible
-                            }
-                        },
+                        // Publish the cumulative captured sample count live so the
+                        // UI can render a sample-derived duration while recording.
+                        { cumulative -> _sampleCount.value = cumulative },
                     )
                     val wav = WavWriter.buildWav(pcm.toByteArray(), pcm.size())
                     RecordingOutcome.Completed(count, wav)

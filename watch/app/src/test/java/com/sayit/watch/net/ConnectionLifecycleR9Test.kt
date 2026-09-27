@@ -690,7 +690,7 @@ class ConnectionLifecycleR9Test {
         )
         assertTrue(
             "the notes must name what the user has to put into the config file",
-            text.contains("devToken"),
+            text.contains("dev_token"),
         )
         assertTrue(
             "the notes must still explain that the frontend is embedded",
@@ -704,7 +704,7 @@ class ConnectionLifecycleR9Test {
         )
         assertFalse(
             "the notes must not recommend wildcard binding",
-            text.contains("\"bindIp\":\"0.0.0.0\""),
+            text.contains("\"bind_ip\":\"0.0.0.0\""),
         )
         assertFalse(
             "the shipped notes must not point at a settings entry that does not exist",
@@ -748,7 +748,7 @@ class ConnectionLifecycleR9Test {
         )
         assertTrue(
             "BUILD-INFO must identify the bundled Watch build",
-            buildInfoText.contains("watch=0.3.0-dev.13 (versionCode 17)"),
+            buildInfoText.contains("watch=0.3.0-dev.15 (versionCode 19)"),
         )
     }
 

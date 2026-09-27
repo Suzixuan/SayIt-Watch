@@ -9,6 +9,27 @@
 
 ---
 
+## Watch 可设置低功耗录音界面 — 2026-09-27（dev.16，Debug 测试包）
+
+- 「设置 → 连接设置」新增低功耗界面切换秒数，默认 10 秒，可设置 1–180 秒。
+- 阈值后由亮色动态波形切换到黑底静态波形；录音计时、结束与取消操作保留。
+- Galaxy Watch 7 实测阈值切换、设置持久化与取消返回 Ready。30 suites / 258 tests 通过，lint 无错误，Debug/Release APK 构建通过。
+- 30 秒渲染帧数从 1815 降到 632；单次 165 秒电量计 A/B 无法分辨续航差异，后续长期观察。
+
+---
+
+## Watch 通用 Wear OS 兼容 — 2026-09-26（dev.14，Debug 候选）
+
+- 同一个 APK 面向 Wear OS 3+ / API 30+，不增加品牌专属客户端，也不引入 Samsung SDK。
+- Manifest 明确要求手表设备、麦克风和 Wi-Fi，避免把不能完成录音或局域网上传的设备列为兼容。
+- `2-Install-Watch.cmd` 在安装和写入 Token 前检查 API 版本、Watch form factor、麦克风与 Wi-Fi；普通 Android 手机、旧系统或缺少必要硬件时给出具体原因并停止。
+- 真机并排验收使用独立包名 `com.sayit.watch.universaltest`，保留手表上的 dev.13 不升级覆盖；Galaxy Watch7 完成连接、2 秒录音和 Windows 接收端 WAV 落盘。
+- 真机验收发现快速安装脚本使用 camelCase 配置字段、而 Windows 接收器正式契约使用 `bind_ip/dev_token`。`1-Setup-PC.cmd` 现在兼容读取旧字段但统一写回正式 snake_case，`2-Install-Watch.cmd` 优先读取 `dev_token`，并增加进程级回归测试。
+- README 新增兼容/不兼容列表：目标覆盖不同品牌的 Wear OS 3+ 型号；Apple Watch、华为/HarmonyOS、Zepp OS、Garmin、Tizen、Fitbit OS 与封闭 RTOS 设备不在当前客户端范围。
+- 现有录音、WAV、DNS-SD/mDNS、Bearer Token、双电脑选择、Windows ASR/History/Paste 链路不变。当前完整真机证据仍只有 Galaxy Watch 7，非 Samsung Wear OS 真机尚待验收。
+
+---
+
 ## Watch 快速安装包 — 2026-09-26（dev.13，Debug 测试包）
 
 - GitHub Release 改为同时提供 Windows 自包含客户端、Watch dev.13 APK 和快速安装入口，不再让旧 `v0.1.8-watchportable` 冒充当前功能版本。

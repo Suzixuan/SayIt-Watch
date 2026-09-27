@@ -18,6 +18,9 @@
     <string name="config_tap_to_edit">点击输入</string>
     <string name="config_show_token">显示</string>
     <string name="config_hide_token">隐藏</string>
+    <string name="config_low_power_after">低功耗界面（秒）</string>
+    <string name="config_low_power_hint">录音超过该时长后切换为黑底静态界面；可设置 1–180 秒。</string>
+    <string name="config_low_power_validation">低功耗界面请输入 1–180 秒。</string>
     <string name="config_save_apply">Save &amp; Apply</string>
     <string name="config_validation_hint">请输入 64 位十六进制令牌。</string>
     <string name="config_manual_settings">手动设置地址（可选）</string>
@@ -66,6 +69,8 @@
     <!-- Recording -->
     <string name="recording_stop">结束录音</string>
     <string name="recording_cancel_hint">取消</string>
+    <string name="recording_stop_hint">轻触波形停止</string>
+    <string name="recording_cancel_discard">取消并丢弃</string>
 
     <!-- Actions / status -->
     <string name="action_ok">确定</string>

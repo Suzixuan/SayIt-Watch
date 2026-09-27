@@ -2,6 +2,7 @@ package com.sayit.watch.ui
 
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -59,6 +60,14 @@ class WatchUiMetricsTest {
         assertEquals("00:00", formatRecordingDurationFromSamples(0))
         assertEquals("00:01", formatRecordingDurationFromSamples(16_000))
         assertEquals("00:01", formatRecordingDurationFromSamples(29_472))
+    }
+
+    @Test
+    fun `low power presentation begins at the configured captured duration`() {
+        assertFalse(isLowPowerRecording(sampleCount = 159_999, afterSeconds = 10))
+        assertTrue(isLowPowerRecording(sampleCount = 160_000, afterSeconds = 10))
+        assertFalse(isLowPowerRecording(sampleCount = 2_879_999, afterSeconds = 180))
+        assertTrue(isLowPowerRecording(sampleCount = 2_880_000, afterSeconds = 180))
     }
 
 }

@@ -2149,8 +2149,11 @@ export class RecorderOrchestrator {
     if (!res || res.requestId !== requestId) return { ok: false, reason: 'already_reserved' }
     res.phase = 'preparing'
     try {
+      // Match the microphone path: editor text is only captured when AI cleanup
+      // and context-aware writing are both enabled.
+      const includeTextContext = this.cachedContextAwareWriting && this.cachedAiEnabled
       const recordingContext = await Promise.race([
-        bridge.getRecordingContext(false),
+        bridge.getRecordingContext(includeTextContext),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('context_capture_timeout')), PHASE_B_BUDGET_MS),
         ),
@@ -2158,8 +2161,15 @@ export class RecorderOrchestrator {
       if (!this.isExternalCurrent(requestId, res.runId)) {
         return { ok: false, reason: 'stale_reservation' }
       }
-      // Same fields as the mic path, so the onFinal/timeout snapshots need no changes.
-      this.currentActiveAppContext = recordingContext.appContext as unknown as ActiveAppContext
+      // Same context and prompt routing as the mic path, so Watch recordings
+      // honor the global AI toggle, active preset and per-app rules.
+      const activeAppContext = recordingContext.appContext as unknown as ActiveAppContext
+      const textContext = usableTextContext(activeAppContext?.textContext)
+      if (activeAppContext) {
+        if (textContext) activeAppContext.textContext = textContext
+        else delete activeAppContext.textContext
+      }
+      this.currentActiveAppContext = activeAppContext
       this.cachedProbeResult = recordingContext.probe as unknown as ProbeResult
       this.currentPromptResolution = resolvePromptRouting({
         appContext: this.currentActiveAppContext,
@@ -2170,6 +2180,17 @@ export class RecorderOrchestrator {
         hotwords: this.cachedHotwords,
         injectHotwords: this.cachedInjectHotwords,
       })
+      if (textContext) {
+        this.currentPromptResolution = {
+          ...this.currentPromptResolution,
+          systemPrompt: withContextAwareInstructions(
+            this.currentPromptResolution.systemPrompt,
+            textContext,
+            this.cachedContextSelectionEditPrompt,
+          ),
+          summary: `${this.currentPromptResolution.summary} | Text context: ${textContext.selectedText ? 'selection' : 'caret'}`,
+        }
+      }
       res.phase = 'prepared'
       addRuntimeEvent('info', 'recorder', 'External run prepared (Phase B)', {
         requestId,
@@ -2190,8 +2211,8 @@ export class RecorderOrchestrator {
   /**
    * Feed the validated raw PCM through the active Provider (contract §B.5).
    * Order is the frozen lifecycle: validate → reset run fields → connect(fresh
-   * guarded callbacks) → re-verify ready → checked start (AI forced off for this
-   * run only) → transition recording → run-start ack → exact-accounting feed →
+   * guarded callbacks) → re-verify ready → checked start (same AI/prompt policy
+   * as the mic path) → transition recording → run-start ack → exact-accounting feed →
    * assertions → shared finalize. No PCM moves before `start()` succeeds; every
    * await re-verifies the reservation; every failure aborts both sides.
    */
@@ -2232,19 +2253,33 @@ export class RecorderOrchestrator {
       return false
     }
 
-    // (5) Checked start. AI cleanup is forced off for this run only:
-    // disableAi: true and no system prompt — the user's aiEnabled setting is
-    // never read-modified or persisted.
-    const promptOpts: StartOptions = {
-      runId,
-      disableAi: true,
-      aiMinDurationSec: this.cachedAiMinDurationSec,
-      clientMeta: this.cachedClientRuntimeInfo,
-      appContext: this.currentActiveAppContext,
-      hotwords: this.cachedHotwords.length > 0 ? this.cachedHotwords : undefined,
-      language: this.cachedLanguage || undefined,
-      streamingDisplay: this.cachedStreamingDisplay,
-    }
+    // (5) Checked start. Watch ingress follows the same user-visible AI
+    // contract as microphone recording: toggle, prompt routing and threshold.
+    const textContext = usableTextContext(this.currentActiveAppContext?.textContext)
+    const promptOpts: StartOptions = this.currentPromptResolution
+      ? {
+        runId,
+        systemPrompt: this.cachedAiEnabled ? this.currentPromptResolution.systemPrompt : undefined,
+        disableAi: !this.cachedAiEnabled,
+        aiMinDurationSec: this.cachedAiMinDurationSec,
+        clientMeta: this.cachedClientRuntimeInfo,
+        appContext: this.currentActiveAppContext,
+        textContext,
+        hotwords: this.cachedHotwords.length > 0 ? this.cachedHotwords : undefined,
+        language: this.cachedLanguage || undefined,
+        streamingDisplay: this.cachedStreamingDisplay,
+      }
+      : {
+        runId,
+        disableAi: !this.cachedAiEnabled,
+        aiMinDurationSec: this.cachedAiMinDurationSec,
+        clientMeta: this.cachedClientRuntimeInfo,
+        appContext: this.currentActiveAppContext,
+        textContext,
+        hotwords: this.cachedHotwords.length > 0 ? this.cachedHotwords : undefined,
+        language: this.cachedLanguage || undefined,
+        streamingDisplay: this.cachedStreamingDisplay,
+      }
     let started = false
     try {
       started = this.provider.start(promptOpts)
@@ -2321,7 +2356,14 @@ export class RecorderOrchestrator {
       return true
     }
     this.wallTimeAtStopSec = audioDur
-    this.finalizeRecording(runId, { pttHoldMs: audioDur * 1000, disableAi: true }, audioDur, audioDur)
+    const skipAiForShortSpeech = this.cachedAiMinDurationSec > 0
+      && audioDur < this.cachedAiMinDurationSec
+    this.finalizeRecording(
+      runId,
+      { pttHoldMs: audioDur * 1000, disableAi: skipAiForShortSpeech || undefined },
+      audioDur,
+      audioDur,
+    )
     return true
   }
 

@@ -1,5 +1,40 @@
 # SayIt Watch Transport handoff
 
+## 低功耗录音界面与 GitHub 更新：0.3.0-dev.16（2026-09-27，真机初验通过）
+
+- 用户要求在「连接设置」中配置低功耗切换秒数；Watch dev.16/code 20 已实现默认 10 秒、有效范围 1–180 秒，阈值前保留亮色动画、阈值后黑底静态波形与 1 Hz 计时。真机测试确认设置保存/冷启动持久化、5 秒亮界面、12 秒暗界面、取消返回 Ready；重叠底部刻度的首次修正版保留为否决图，最终布局通过。视觉与原始 A/B 证据冻结于 `design/watch-ui/0.3.0-dev.3-candidate.2/`，旧候选和 dev.15 基线保持不变。
+- 同一 dev.16 二进制在 Watch7 上做 165 秒 A/B：阈值 180 秒与 10 秒的电量计均显示消耗 3.692 mAh；30 秒渲染帧数 1815→632，表温变化分别为 +3.0°C 与 +0.1°C。可以确认渲染量与本次温升有差异；续航收益需长期观察。用户已明确结束本轮测量。自动亮度已恢复、0° 方向锁定、阈值留在 10 秒。
+- 30 suites / 258 tests / 0 failures，lint 0 errors / 38 warnings，Debug/Release APK 构建通过。最终 Debug APK 21,126,192 bytes，SHA-256 `95B0BD3BA2096805685AF0BF26C83282D4A52F920E4919274D559F1B2E6DEE5C`，已保留数据安装在 Galaxy Watch7。README 和发布包更新至 dev.16 的 GitHub 交付在本轮进行；包内 Windows EXE 继续采用已验收 dev.15 AI 修复构建，桌面产品源码没有新变化。
+
+## 低功耗录音界面候选：0.3.0-dev.3-candidate.1（2026-09-26，待视觉确认）
+
+- 用户要求先查看“计时降为 1 Hz + 波形短暂动画后静止”和“黑底低功耗录音界面”的外观。候选已冻结在 `design/watch-ui/0.3.0-dev.3-candidate.1/`：保留录音页中心停止、取消丢弃、四个蓝色方位刻度和保持亮屏的可靠录音路径；改为近黑表盘、稀疏暗刻度、常亮录音圆点和静态蓝色波形。`02-one-hz-timer.png` 展示连续两秒仅计时变化，`03-before-after.png` 展示现状与候选对比。当前状态为 `candidate`，尚未改正式资源、产品源码或 APK；省电幅度与真机效果均未测量，须视觉确认后才可实施。
+
+## Watch 录音 AI 整理修复：dev.15（2026-09-26，Watch7 真机端到端通过）
+
+- 根因已确认：Delivery 1B 在 `RecorderOrchestrator.beginExternalRun` 和外部录音 finalize 中硬编码 `disableAi: true`，所以原版与通用 Wear OS 版的 Watch 录音都会绕过 AI；这不是 dev.14 新引入的问题。用户于 2026-09-26 明确纠正该产品行为，旧任务文件保留为历史，但 Provider Contract 已标记该 AI-off 条款被取代。
+- 提交 `9d93a104ce4a64d21e420e7f71f6fb3816aed55e` 让 Watch 外部录音与电脑麦克风共用现有 `aiEnabled`、提示词预设/应用规则、热词、语言、上下文感知写作隐私边界和 `aiMinDurationSec`。AI 关闭分支仍传 `disableAi: true` 且不传系统提示词；不会改写用户设置。
+- 回归：Windows 前端 31 test files / 371 tests / 0 failures，`tsc && vite build` 通过；Watch 28 suites / 253 tests / 0 failures / 0 errors / 0 skipped，`lintDebug` 0 errors，`assembleDebug` 通过。APK 读回 versionName `0.3.0-dev.15`、versionCode 19、minSdk 30、targetSdk 34，并保留 Watch/麦克风/Wi-Fi required features。
+- 真实链路分两级通过：先由新编译 EXE 重放前一条真实 Watch WAV，`llm_ms=568`；随后在 SM-L310 / Galaxy Watch7 上用已并排安装的 dev.14 sidecar 现场录音 26.84 秒，经 Wi-Fi 上传到 dev.15 Windows EXE，手表回到 Ready、接收 WAV 时间更新并新增 History，`asr_text != llm_text`、`llm_ms=480`，AI provider/model=`deepseek/deepseek-v4-flash`。这证明 Watch 录音 → 上传 → ASR → AI → History 的完整真机链路实际执行了 AI。未提交音频或转写正文；证据摘要和 Ready 截图在 `docs/evidence/watch-ai-parity-dev15/`。
+- 新包不覆盖 dev.14：`dist-portable/SayIt-Watch-0.3.0-dev.15-windows-wear-os-bundle.zip` 为 25,069,276 bytes，SHA-256 `437F4BDEC4DD21DD8802E83FB9E535B1860FB7FBD97FE9F416B18BB26C24E1CB`；独立 APK 为 20,763,996 bytes，SHA-256 `DECCC3914ED98E4575D8EB0EE4CBD88B92A4449B536705FE36551BDEF4FE2F99`；包内新 EXE SHA-256 `664565E7ECCCE49A0E5818C9E827502BDA5FD2A635FD9D4139DFC50F33794959`。ZIP 34 个条目、33 条内部哈希全部复算一致；仅含两个既有测试 WAV，无接收录音、配置、Token、凭证、keystore 或 AAB。隔离解压启动通过，接收端口监听正常。
+- 本机部署已切换到 `C:\Users\suzix\Desktop\SayIt-Watch-0.3.0-dev.15-windows-x64-portable\SayIt.exe`；运行路径、接收端口和 EXE SHA-256 均核对通过，包内 33/33 payload 哈希一致。旧 `dev.2` 桌面备份、dev.15 隔离冒烟测试副本和本轮构建恢复产生的冗余 Junction 已移入 Windows 回收站并逐项核对恢复记录；当前 dev.15 运行目录、有效构建 Junction 及其目标数据均保留。LocalAppData 的 `history_records` 仍为 76 条，`aiEnabled=true`；History 是用户的转写/AI 结果记录，不属于备份，未清理。
+- 用户随后授权以通用版替换 Watch 旧正式版：在 SM-L310 上对 `com.sayit.watch.debug` 执行保留数据升级，dev.13/code 17 已变为 dev.15/code 19，`firstInstallTime` 和两个 SharedPreferences 文件 SHA-256 均保持不变；主界面实际显示“已连接电脑 / MIC READY”，进程与主 Activity 在前台。验收后已卸载仅供并排测试的 `com.sayit.watch.universaltest` dev.14 sidecar，设备现在只保留一个正式 SayIt 包。桌面端未变。当前这台电脑继承的旧接收配置仍绑定 `0.0.0.0:18099`；新安装脚本会写显式 RFC1918 地址，但本轮没有擅自改用户现有配置。尚未 push、merge、tag 或发布 GitHub Release。
+- 替换后的界面一度再次物理旋转。根因不是 dev.15 布局或 Manifest 丢失：源码、dev.13 APK 与 dev.15 APK 都声明 `screenOrientation=portrait`；Galaxy Watch7 的 480×480 方形逻辑画布无法靠 portrait 区分四个 90°方向。PM 安装验收时误用 `adb shell monkey`，系统日志在同一秒记录 `MonkeyRotationEvent` 并把方向模式恢复成 `USER_ROTATION_FREE`，随后传感器将显示置为 `ROTATION_270`。现已执行 `wm user-rotation lock 0`，读回 `accelerometer_rotation=0`、`USER_ROTATION_LOCKED`、`ROTATION_0`，直接冷启动 MainActivity 成功并复核“MIC READY / 已连接电脑”画面正常。未改产品源码；后续 Watch 真机启动验收禁止使用 monkey，统一显式 `am start -W -n com.sayit.watch.debug/com.sayit.watch.MainActivity`。
+- 正式通用 dev.15 替换完成后再次做 AI 真机复验：用户播放真实长视频声音，SM-L310 实录 36.32 秒，上传 WAV 1,162,284 bytes；手表停止后回到“MIC READY / 已连接电脑”，方向仍为 `USER_ROTATION_LOCKED / ROTATION_0`。新 `history_records` 行 `list_order=0` 的 `audioDurationSec=36.32`、`asrMs=1294`、`llmMs=442`、AI provider/model=`deepseek/deepseek-v4-flash`，ASR/LLM 文本长度分别为 156/153 且内容不相等，`failReason` 为空，证明当前正式 Watch → Windows dev.15 → ASR → AI → History 链再次通过。正文和音频未提交。前一轮被系统媒体控制器打断的 2.84 秒样本也稍后形成一条独立 AI 记录，因此测试期间 History 共增加两条；未擅自删除。
+- 3 分钟上限真机验收通过：源码默认上限为 180 秒；用户连续播放真实长视频声音后，正式 dev.15 在上限处自动停止并回到 `MIC READY`，收到的 WAV 为 179.88 秒 / 5,756,204 bytes / PCM signed 16-bit little-endian / 16 kHz / mono / 256 kbps，共 2,878,080 个采样点，距名义上限仅 0.12 秒。音频整体 RMS/mean 为 -33.5 dBFS，RMS peak -20.0 dBFS，峰值 -8.3 dBFS、没有触及满幅削波；以 -40 dB、至少 0.5 秒为口径检测到 12 段静音，共 11.299 秒（6.28%）。新 History 将总数从 79 增至 80，记录 `audioDurationSec=179.88`、`asrMs=6938`、`llmMs=465`、provider/model=`deepseek/deepseek-flash`，ASR/AI 文本长度 569/551 且内容不相等，`failReason` 为空。手表仍为 `USER_ROTATION_LOCKED / ROTATION_0`。该结果证明 3 分钟录音、上传、ASR、AI 整理和 History 完整链路通过；接收音频和正文未提交。
+
+## 通用 Wear OS 3+ 单客户端兼容：dev.14（2026-09-26，Watch7 并排真机通过，跨品牌真机待验）
+
+- 用户将范围收窄为：排除 Apple Watch 与华为，不开发其他系统客户端；先让现有同一个客户端兼容不同品牌的 Wear OS 3+ 设备，其余系统只在 README 标为不兼容。新分支 `codex/wear-os-compat` 基于公开 `main` `08c8255`，没有改 Windows 接收器、协议、WAV、发现、Token、录音、双电脑选择、ASR、History 或 Paste。
+- Watch 升为 `0.3.0-dev.14` / code 18，最低 API 仍为 30。Manifest 新增 required `android.hardware.type.watch` 和 `android.hardware.wifi`，保留 required microphone，并明确 `com.google.android.wearable.standalone=true`；这与手表直接通过 Wi-Fi 连接电脑、无需手机伴侣的现有架构一致。
+- `2-Install-Watch.cmd` 对应 PowerShell 现在会在安装和写入 Token 前读取设备 API、form factor、麦克风和 Wi-Fi feature；普通 Android 手机、API 29 以下、无麦克风或无 Wi-Fi 的设备安全停止并说明原因。进程级 fake-adb 验证：普通手机退出非零且没有执行 `adb install`；合格 API 34 Watch fixture 退出 0 且执行安装。
+- Watch7 真机验收发现快速安装脚本原先使用 camelCase `bindIp/devToken`，与 Windows 接收器实际 `bind_ip/dev_token` 契约不一致。现已修复：`Setup-PC.ps1` 兼容读取旧字段但统一写回 snake_case，`Install-Watch.ps1` 优先读取正式 `dev_token`；新增进程级测试验证真实格式不会被破坏。
+- README 改为通用 Wear OS 3+ 入口，并明确 Apple Watch、Huawei/HarmonyOS、Amazfit/Zepp OS、Garmin、旧 Samsung Tizen、Fitbit OS、封闭 RTOS 及缺少麦克风/Wi-Fi 的型号不兼容。Samsung/Pixel/Xiaomi/OnePlus/OPPO/Mobvoi 只指运行 Wear OS 3+ 且满足硬件契约的型号；当前不能把目标兼容范围写成已逐台真机验证。
+- PM 全量 `testDebugUnitTest` 为 28 suites / 253 tests / 0 failures / 0 errors / 0 skipped；`lintDebug` 为 0 errors / 38 warnings，`assembleDebug` 成功。APK 二进制读回 versionName `0.3.0-dev.14`、versionCode 18、minSdk 30、targetSdk 34，三项 required feature 与 standalone=true 均真实存在；APK SHA-256 `9ECE4EB9EF72F2EC91CEA6A732244B64EFBF210CB568E9443D3B531FBC274C67`。
+- 为满足“不覆盖现在版本”，真机使用独立测试包 `com.sayit.watch.universaltest` / `0.3.0-dev.14-sidecar`，与原 `com.sayit.watch.debug` dev.13 并存。安装前后旧包 versionCode 17、versionName dev.13、`lastUpdateTime=2026-09-26 16:55:32` 均未变化。SM-L310/API 36 读回 Watch、麦克风、Wi-Fi 三项 feature；并排包完成认证连接、2 秒真实录音和上传，Windows 于 `20:28:55.486 -07:00` 收到新的 83,244-byte WAV。截图和元数据见 `docs/evidence/wear-os-dev14-watch7-sidecar/`，接收音频本身未提交。
+- 当前实现提交为 `1cbbd08a7df9c82c27e130ea1cb81e6ef266816e`。统一测试包 `dist-portable/SayIt-Watch-0.3.0-dev.14-windows-wear-os-bundle.zip` 为 25,069,007 bytes，SHA-256 `0E6D9BB63A1163D340D103F23BCE7D00DA76A4D280520E769D181BDEAFF19574`；独立 APK `dist-portable/SayIt-Watch-0.3.0-dev.14.apk` 为 20,765,930 bytes，SHA-256 `9ECE4EB9EF72F2EC91CEA6A732244B64EFBF210CB568E9443D3B531FBC274C67`。ZIP 共 34 个文件条目，33 条内部 SHA-256 独立复算全部一致，包内脚本含 snake_case 修复，未带配置、Token、凭证、接收录音、keystore 或 AAB。包内 Windows EXE 继续复用已验收提交 `e33b5361c3517f35d75bf210bfc1077d4f730658`，其 SHA-256 为 `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`。
+- **验收边界**：通用构建已在现有 Galaxy Watch7 上以并排包完成安装、连接、录音和上传，且旧版本未覆盖；但尚无非 Samsung Wear OS 真机，因此 Pixel/Xiaomi/OnePlus/OPPO/TicWatch 等具体型号只能标为目标兼容，不能标为 VERIFIED。未获得新的 push、merge、tag 或 Release 授权，本轮先保留本地提交/产物。
+
 ## Latest 快速安装测试包与 README（2026-09-26）
 
 - GitHub Release [`v0.3.0-dev.13`](https://github.com/Suzixuan/SayIt-Watch/releases/tag/v0.3.0-dev.13) 已发布为 **Latest**，标题为「SayIt Watch 0.3.0-dev.13 快速安装测试包」，不是 prerelease/draft。实现和安装文档已通过 merge `e7172bfdf8e515730749547dbe0c3c39b499c1d3` 进入公开仓库 `main`。

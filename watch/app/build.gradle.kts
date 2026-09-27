@@ -18,8 +18,10 @@ android {
         // R11: distinguish the switch-cancel status repair during device acceptance.
         // R12-A: distinguish the foreground-revalidation Ready projection repair.
         // R12-B: stream authenticated switch candidates before the browse window closes.
-        versionCode = 17
-        versionName = "0.3.0-dev.13"
+        // dev.15: generic Wear OS 3+ build paired with desktop Watch-AI parity.
+        // dev.16: configurable delayed low-power recording presentation.
+        versionCode = 20
+        versionName = "0.3.0-dev.16"
         minSdk = 30
         targetSdk = 34
     }

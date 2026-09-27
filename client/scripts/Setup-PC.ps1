@@ -62,8 +62,12 @@ if (Test-Path -LiteralPath $ConfigPath) {
     }
 }
 
-$token = if ($existing -and "$($existing.devToken)" -match '^[0-9A-Fa-f]{64}$') {
-    "$($existing.devToken)".ToLowerInvariant()
+$existingToken = if ($existing) {
+    if ("$($existing.dev_token)" -match '^[0-9A-Fa-f]{64}$') { "$($existing.dev_token)" }
+    elseif ("$($existing.devToken)" -match '^[0-9A-Fa-f]{64}$') { "$($existing.devToken)" }
+}
+$token = if ($existingToken) {
+    $existingToken.ToLowerInvariant()
 } else {
     $providedToken = ''
     if (-not $GenerateNewToken) {
@@ -84,8 +88,13 @@ $token = if ($existing -and "$($existing.devToken)" -match '^[0-9A-Fa-f]{64}$') 
 }
 
 if (-not $BindIp) {
-    if ($existing -and (Test-PrivateIpv4 "$($existing.bindIp)")) {
-        $BindIp = "$($existing.bindIp)"
+    $existingBindIp = if ($existing -and (Test-PrivateIpv4 "$($existing.bind_ip)")) {
+        "$($existing.bind_ip)"
+    } elseif ($existing -and (Test-PrivateIpv4 "$($existing.bindIp)")) {
+        "$($existing.bindIp)"
+    }
+    if ($existingBindIp) {
+        $BindIp = $existingBindIp
     } else {
         $BindIp = Read-PrivateIpv4
     }
@@ -101,7 +110,7 @@ if ($existing -and $existing.port -as [int] -and [int]$existing.port -ge 1 -and 
 
 $configDirectory = Split-Path -Parent $ConfigPath
 [IO.Directory]::CreateDirectory($configDirectory) | Out-Null
-$json = [ordered]@{ bindIp = $BindIp; port = $port; devToken = $token } | ConvertTo-Json -Compress
+$json = [ordered]@{ bind_ip = $BindIp; port = $port; dev_token = $token } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText($ConfigPath, $json, (New-Object Text.UTF8Encoding($false)))
 
 $clipboardMessage = '测试模式未写入剪贴板。'

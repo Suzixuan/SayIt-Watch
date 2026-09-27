@@ -69,6 +69,7 @@ vi.mock('../store', () => ({
       historyEnabled: true,
       audioRetentionEnabled: false,
       streamingDisplayEnabled: false,
+      aiEnabled: true,
     }
     return key in overrides ? overrides[key] : fallback
   }),
@@ -126,6 +127,7 @@ vi.mock('@/services/personalization/promptRouter', () => ({
     appName: 'App',
     matchedRule: undefined,
     summary: 'summary',
+    systemPrompt: 'resolved Watch prompt',
   })),
 }))
 vi.mock('@/services/personalization/store', () => ({
@@ -377,7 +379,7 @@ describe('external run lifecycle (§B.5)', () => {
     expect(handlers.tryReserveExternalRun(REQ)).toBe(true)
   })
 
-  it('forces AI cleanup off for the external run only (disableAi, no system prompt)', async () => {
+  it('honors enabled AI cleanup and the resolved prompt for an external run', async () => {
     await runToProcessing()
 
     const startOpts = lastOf(vi.mocked(fake.provider.start).mock.calls)?.[0] as unknown as {
@@ -385,8 +387,28 @@ describe('external run lifecycle (§B.5)', () => {
       systemPrompt?: string
       runId: number
     }
+    expect(startOpts.disableAi).toBe(false)
+    expect(startOpts.systemPrompt).toBe('resolved Watch prompt')
+    const stopOpts = lastOf(vi.mocked(fake.provider.stop).mock.calls)?.[0] as unknown as {
+      disableAi?: boolean
+    }
+    expect(stopOpts.disableAi).toBeUndefined()
+  })
+
+  it('still honors the user turning AI cleanup off', async () => {
+    const { recorder, handlers } = await makeRecorder()
+    ;(recorder as unknown as { cachedAiEnabled: boolean }).cachedAiEnabled = false
+
+    expect(handlers.tryReserveExternalRun(REQ)).toBe(true)
+    expect(await handlers.prepareExternalRun(REQ)).toEqual({ ok: true })
+    expect(await handlers.beginExternalRun(REQ, makePcm(), SAMPLE_COUNT)).toBe(true)
+
+    const startOpts = lastOf(vi.mocked(fake.provider.start).mock.calls)?.[0] as unknown as {
+      disableAi?: boolean
+      systemPrompt?: string
+    }
     expect(startOpts.disableAi).toBe(true)
-    expect('systemPrompt' in startOpts ? startOpts.systemPrompt : undefined).toBeUndefined()
+    expect(startOpts.systemPrompt).toBeUndefined()
   })
 
   it('captures the focus probe and native context exactly once per run', async () => {

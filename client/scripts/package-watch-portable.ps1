@@ -2,7 +2,7 @@
 #
 # One ZIP, one entry point, both PCs. Produces:
 #
-#   SayIt-Watch-0.3.0-dev.13-windows-watch-bundle.zip
+#   SayIt-Watch-0.3.0-dev.16-windows-wear-os-bundle.zip
 #
 # containing a Tauri **Debug** build whose frontend is EMBEDDED (`frontendDist`), so the
 # unpacked application starts on any Windows PC without this source tree, without Node,
@@ -46,7 +46,7 @@ $clientDir = Join-Path $repoRoot 'client'
 $tauriDir = Join-Path $clientDir 'src-tauri'
 if (-not $OutputDir) { $OutputDir = Join-Path $repoRoot 'dist-portable' }
 
-$packageBase = 'SayIt-Watch-0.3.0-dev.13-windows-watch-bundle'
+$packageBase = 'SayIt-Watch-0.3.0-dev.16-windows-wear-os-bundle'
 $zipPath = Join-Path $OutputDir "$packageBase.zip"
 $stagingDir = Join-Path $OutputDir $packageBase
 
@@ -70,7 +70,7 @@ Bundle/Watch: committed product head @GIT_HEAD@
 Windows EXE : committed desktop-runtime head @WINDOWS_BINARY_COMMIT@
 Build type  : Tauri Debug build with the frontend EMBEDDED in the executable.
 Entry point : SayIt.exe  (same file on every PC — there is no per-PC package)
-Watch app   : 0.3.0-dev.13 (versionCode 17)
+Watch app   : 0.3.0-dev.16 (versionCode 20), generic Wear OS 3+ compatibility contract
 
 Quick install
 -------------
@@ -79,8 +79,8 @@ Quick install
    the local token, writes the receiver config and starts SayIt.
 3. Allow SayIt through Windows Firewall on Private networks only.
 4. Put Android SDK platform-tools beside this folder (or add adb.exe to PATH), then double-click
-   2-Install-Watch.cmd. It guides pairing, installs SayIt-Watch.apk and provisions the same token
-   on a first-time Watch install.
+   2-Install-Watch.cmd. It checks Wear OS 3+ / API 30+, watch form factor, microphone and Wi-Fi,
+   guides pairing, installs SayIt-Watch.apk and provisions the same token on a first-time install.
 5. Keep the PC and Watch on the same trusted Wi-Fi. Open Notepad, focus its input box, record on
    the Watch and stop; the recognized text should appear in the focused input box.
 
@@ -96,7 +96,7 @@ Connection details
 The receiver configuration stays at:
     @RECEIVER_CONFIG@
 1-Setup-PC.cmd writes an explicit RFC1918 address; it never recommends wildcard binding. If a
-valid config already exists, it preserves the devToken field. For multiple PCs, you must bring the
+valid config already exists, it preserves the dev_token field. For multiple PCs, you must bring the
 token over yourself through a channel you trust and use the same token on every PC to be discovered.
 The desktop still needs its own ASR/provider configuration; models and credentials are not copied.
 
@@ -108,8 +108,11 @@ no source tree, no node_modules, no installer, and no release/auto-update channe
 Current verification boundary
 -----------------------------
 Galaxy Watch 7 discovery, one real recording-to-text path, two-PC switching and the dev.13 picker
-interactions have device evidence. Multi-PC recording routes, repeated-run acceptance and a formal
-security Release remain incomplete. This is a Debug test bundle, not a production installer.
+interactions have device evidence. The dev.16 configurable low-power screen was tested on a
+Galaxy Watch 7; battery-life gains still need longer observation. Generic Wear OS compatibility
+still needs a non-Samsung device run. Multi-PC recording routes,
+repeated-run acceptance and a formal security Release remain incomplete. This is a Debug test
+bundle, not a production installer.
 '@
 
 <#
@@ -138,7 +141,7 @@ function New-PortableNotes {
         'entry=SayIt.exe',
         'build=debug',
         'frontend=embedded',
-        'watch=0.3.0-dev.13 (versionCode 17)',
+        'watch=0.3.0-dev.16 (versionCode 20)',
         "git_head=$GitHead",
         "bundle_git_head=$GitHead",
         "watch_git_head=$GitHead",
@@ -183,11 +186,15 @@ function Test-PortableNotes {
         'frontendDist',
         'SayIt.exe',
         'watch-receiver.config.json',
-        'devToken',
+        'dev_token',
         '1-Setup-PC.cmd',
         '2-Install-Watch.cmd',
         'SayIt-Watch.apk',
-        'RFC1918'
+        'RFC1918',
+        'Wear OS 3+',
+        'API 30+',
+        'microphone',
+        'Wi-Fi'
     )) {
         if (-not $readmeText.Contains($required)) {
             Fail "README-PORTABLE.txt must mention $required"
@@ -197,7 +204,7 @@ function Test-PortableNotes {
     if ($readmeText.Contains([char]0xFFFD)) {
         Fail 'README-PORTABLE.txt was not written as clean UTF-8'
     }
-    if ($readmeText.Contains('"bindIp":"0.0.0.0"')) {
+    if ($readmeText.Contains('"bind_ip":"0.0.0.0"')) {
         Fail 'README-PORTABLE.txt must not recommend wildcard binding'
     }
     foreach ($forbidden in @('SayIt 设置', '服务器访问令牌')) {
