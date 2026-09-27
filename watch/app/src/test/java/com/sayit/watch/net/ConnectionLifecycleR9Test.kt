@@ -346,6 +346,42 @@ class ConnectionLifecycleR9Test {
         assertTargetAgrees(h, desktop, "after returning to the foreground")
     }
 
+    @Test
+    fun `foreground revalidation restores the connected ready projection`() {
+        val h = harness(health = 60_000L)
+        connect(h)
+        waitUntil("the initial connection must reach the Ready projection") {
+            h.viewModel.ui.value.connected && h.viewModel.ui.value.transportAvailable == true
+        }
+
+        h.viewModel.onBackground()
+        waitUntil("the owner must pause in the background") {
+            !h.viewModel.ownerForegroundForTest
+        }
+
+        val probesBeforeReturn = h.probe.totalProbes()
+        h.viewModel.onForeground()
+        waitUntil("foreground return must authenticate the retained target again", timeoutMs = 15_000L) {
+            h.probe.totalProbes() > probesBeforeReturn &&
+                h.viewModel.ownerRoundKindForTest == ConnectionTaskOwner.RoundKind.IDLE_CONNECTED
+        }
+
+        assertTargetAgrees(h, desktop, "after foreground revalidation")
+        assertTrue(
+            "an authenticated foreground revalidation must restore the connected projection",
+            h.viewModel.ui.value.connected && h.viewModel.ui.value.transportAvailable == true,
+        )
+        assertEquals(
+            "the Ready status must stop waiting once the retained target authenticated",
+            com.sayit.watch.R.string.discovery_saved_neutral,
+            readyStatusTextRes(
+                state = h.viewModel.discovery.value,
+                connected = h.viewModel.ui.value.connected && h.viewModel.ui.value.transportAvailable == true,
+                connecting = h.viewModel.ui.value.connecting,
+            ),
+        )
+    }
+
     // ── 2. an explicit switch while a probe is in flight ────────────────────
 
     /**

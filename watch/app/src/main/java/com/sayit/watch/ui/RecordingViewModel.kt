@@ -114,6 +114,7 @@ data class WatchUiState(
 data class SwitchEntry(
     val target: DiscoverySelection,
     val isCurrent: Boolean,
+    val isOnline: Boolean,
 )
 
 class WatchUiStateMachine(
@@ -356,6 +357,7 @@ class RecordingViewModel(
      */
     private val retryDelayMs: Long = ConnectionTaskOwner.DefaultRetryDelayMs,
     private val healthCheckIntervalMs: Long = ConnectionTaskOwner.DefaultHealthCheckIntervalMs,
+    private val pickerRefreshDelayMs: Long = ConnectionTaskOwner.DefaultPickerRefreshDelayMs,
 ) : ViewModel() {
 
     private val settings: DiscoverySettings = settings
@@ -494,6 +496,7 @@ class RecordingViewModel(
             coordinator?.stopBrowseOnly()
         },
         isConnected = { resolver.hasVerifiedTarget },
+        keepBrowsing = { resolver.isPickerOpen },
         /**
          * 1C-D-04@R9 P0-A: the probe itself is pure — it reports the answer and nothing else. The
          * OWNER decides whether that answer may still be applied, so a probe that returns after its
@@ -506,6 +509,7 @@ class RecordingViewModel(
         onFinished = { ownerRoundFinished() },
         retryDelayMs = retryDelayMs,
         healthCheckIntervalMs = healthCheckIntervalMs,
+        pickerRefreshDelayMs = pickerRefreshDelayMs,
     )
 
     init {
@@ -766,8 +770,8 @@ class RecordingViewModel(
     /**
      * 1C-D-04@R2/R3 — the explicit "switch computer" entry point.
      *
-     * 1C-D-04@R7 必修 1/2: the picker opens and a single bounded browse refreshes the
-     * candidate list. The browse NEVER adopts anything — not even a single new
+     * 1C-D-04@R7 必修 1/2: the picker opens and one bounded browse round refreshes the
+     * candidate list. R3 repeats that round only while the picker stays visible. A browse NEVER adopts anything — not even a single new
      * candidate — so switching is always an explicit user pick. The computer in use
      * stays selected and stays usable until the user confirms another one.
      */
@@ -790,7 +794,12 @@ class RecordingViewModel(
         uiEvent { it.switchSearching(true) }
         val browseRunId = resolver.newSwitchRun()
         val found = try {
-            resolver.handleSwitchBrowse(browseRunId)
+            resolver.handleSwitchBrowse(browseRunId) {
+                // The 8 s window stays open for later computers, but every endpoint
+                // that has already passed the Bearer probe becomes visible at once.
+                // A superseded browse is forbidden from repainting the newer picker.
+                if (resolver.isCurrentSwitchRun(browseRunId)) publishTargets()
+            }
         } finally {
             // The picker must never stay in "searching" — not even when the round was cancelled by
             // a newer intent. 1C-D-04@R9: no NonCancellable wraps a cancelled round's
@@ -833,14 +842,29 @@ class RecordingViewModel(
      * refused, so widening the check is impossible.
      */
     fun onTargetPicked(candidate: DiscoverySelection) {
+        // 1C-PM-UI-02@R2: a streamed row is already authenticated. Do not make the user wait for
+        // the rest of the 8 s collection window: stop that browse, keep the current target and
+        // candidate list, then run the existing explicit-pick confirmation probe below.
+        if (machine.state.switchSearching) {
+            taskOwner.stop()
+            resolver.stopPickerSearchKeepOpen()
+            uiEvent { it.switchSearching(false) }
+        }
         viewModelScope.launch {
-            when (val result = resolver.pick(candidate)) {
+            val result = resolver.pick(candidate)
+            when (result) {
                 is ResolverBridge.PickResult.Adopted -> applyTargetChoice(result.target)
                 // Not an authenticated computer, or it stopped answering the probe:
                 // refuse and keep the current target.
                 ResolverBridge.PickResult.Refused -> uiEvent(WatchUiStateMachine::switchClosed)
                 // A newer pick (or a cancel) superseded this probe.
                 ResolverBridge.PickResult.Superseded -> Unit
+            }
+            // Stopping the picker browse also stopped the connection owner. Resume the stable
+            // health/recovery loop after a settled pick without ever starting another hidden
+            // picker browse. A superseded pick is resumed by the newer user intent instead.
+            if (result !is ResolverBridge.PickResult.Superseded && appInForeground) {
+                taskOwner.revalidateNow()
             }
         }
     }
@@ -882,7 +906,9 @@ class RecordingViewModel(
      * authenticated computers.
      */
     fun switchEntries(): List<SwitchEntry> =
-        resolver.pickerCandidates.map { SwitchEntry(it, it == verifiedDestination) }
+        resolver.pickerCandidates.map {
+            SwitchEntry(it, it == verifiedDestination, resolver.isPickerCandidateOnline(it))
+        }
 
     /**
      * 1C-D-04@R7: reports whether this Ready entry started a round. R7 keeps Ready
@@ -969,7 +995,13 @@ class RecordingViewModel(
         val current = verifiedDestination ?: return false
         val coordinatorLocal = coordinator ?: return false
         val ok = coordinatorLocal.probeCandidate(current)
-        if (ok) uiEvent(WatchUiStateMachine::connectionRoundFinished)
+        if (ok) {
+            // Foreground entry deliberately drops the historical online projection before this
+            // probe runs. Re-publish the same authenticated target on success; merely clearing the
+            // `connecting` flag leaves `connected` / `transportAvailable` false and the Ready UI
+            // stuck on "waiting for authentication" even though the probe already succeeded.
+            setVerifiedDestination(current)
+        }
         return ok
     }
 

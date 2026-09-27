@@ -1,5 +1,71 @@
 # SayIt Watch Transport handoff
 
+## GitHub `main` 合并交接（2026-09-26）
+
+- 用户已明确授权把 `codex/watch-connection-r7` 合并到公开仓库 `Suzixuan/SayIt-Watch` 的 `main`。合并前公开 `main` 为 `969f1c9692f7569b6e196e1ab6b9d6106325492a`，功能与文档审核基线为 `b60d58cb920e6cb7f7f3bbf592049202d38d6d6e`；两侧共同内容基线为 `b9b8836319cce2ada13e4da190d26fe1a948bfda`，`main` 独有的两个提交仅为既有 PR 合并记录，文件树无额外变化，合并预测无内容冲突。
+- 本次进入 `main` 的产品范围是 Watch 前台恢复、双电脑候选增量发布、电脑选择器与实时在线列表、本地电脑别名和 dev.13 触控/圆屏安全区修复，以及对应冻结设计、真机证据、README 截图和 CHANGELOG。没有合并 APK/AAB、Token、录音、`.env`、`local.properties`、安装包或构建缓存。
+- 复用未变化源码的 PM 验证：27 suites / 246 tests / 0 failures / 0 errors / 0 skipped，lint 0 errors / 38 warnings，Debug build 成功；最终 APK SHA-256 `174BAEC8F03A00FB215281473DC855DC77D63DFF3C7E7461F2F5714C2F1BA265`。仓库交接检查扫描 19,968 个文件，0 failure；README 16 个本地引用，0 缺失。
+- 合并不改变未完成口径：三星 T9 真实昵称输入/保存/恢复仍待用户手动体验；R12-C 双向真实录音路由、R12-D 重复检查、R12-E 真实转腕观察仍未全部关闭；这次是源码与文档合并，不是 Release、tag 或正式部署。
+- 回滚边界：若合并后发现阻断问题，保留历史并对本次 GitHub merge commit 执行 `git revert -m 1 <merge-sha>`；不得 force-push 或改写公开 `main` 历史。实际 merge SHA 以 GitHub 合并后远端读回为准。
+
+## 自定义入口真机触控与安全区修复：1C-PM-UI-02@R5（2026-09-26，dev.13，部分真机通过）
+
+- dev.12 真机暴露两项核心偏差：整卡 `combinedClickable` 抢走嵌套图标点击，铅笔可见但点了不进入；滚动内容内部的底部 padding 没有缩小视口，两台电脑时关闭键覆盖“重新开始”，自定义页同样会覆盖名称卡片。candidate.6 保留为否决证据。
+- dev.13/code 17 把图标和卡片正文拆成独立触控区：图标点按编辑，正文点按切换，正文长按编辑；选择器与自定义页都让滚动视口真正结束在固定关闭键上方。冻结 `design/watch-ui/0.3.0-dev.2-candidate.7/`，manifest 0 failure。
+- 保留数据安装 Success，设备读回 dev.13/code 17。真机两台电脑同时可见；点 `.142` 图标进入 `.142` 自定义，长按 `.153` 正文进入 `.153` 自定义且当前仍为 `.142`；名称字段可打开编辑界面和三星输入法。选择器及自定义页关闭键均与内容分离。证据见 `docs/evidence/1C-PM-UI-02-R5/`。
+- 三星 T9 不接受本轮 ADB 文本注入，因此“手动输入真实昵称→保存后列表即时更新→恢复默认”留给用户手动体验，不写成已通过。一次冷启动连点误入录音后立即点可见“取消”，未点结束、未上传。
+- PM 最终全量 27 suites / 246 tests / 0 failures / 0 errors / 0 skipped，lint 0 errors / 38 warnings，Debug build 成功；最终 APK SHA-256 `174BAEC8F03A00FB215281473DC855DC77D63DFF3C7E7461F2F5714C2F1BA265`。无 push/merge/tag/Release；发现、认证、在线刷新、录音/上传及 Windows 均未改。
+
+## 电脑本地别名与自定义入口：1C-PM-UI-02@R4（2026-09-26，dev.12，真机否决）
+
+- 用户指出左侧电脑图标/长按卡片本应进入自定义界面并允许重命名，但 dev.11 没有该入口。源码核对确认图标只有绘制，卡片只有普通切换事件，`SettingsStore` 也没有昵称字段；不是入口隐藏，而是上一版确实漏做。
+- dev.12/code 16 在左侧图标增加铅笔角标和 40 dp 点击区；点图标或长按整张卡片进入全屏“自定义电脑”，普通点卡片仍只执行显式切换。可保存 1–16 字符名称或恢复 `电脑 · <IP末段>` 默认名。
+- 名称只写 Watch 应用私有 `SharedPreferences`，按已经认证的 `IP:port` 隔离；不进入 mDNS、Bearer 探针、上传、日志或 Windows 端。当前没有经过认证的稳定设备 ID，所以 DHCP 改址后不自动迁移旧昵称，避免错误套到另一台电脑。
+- 冻结视觉/回滚候选 `design/watch-ui/0.3.0-dev.2-candidate.6/`，父版 candidate.5 保持不变，manifest 复算 0 failure。PM 全量 `testDebugUnitTest --rerun-tasks lintDebug assembleDebug` 退出 0：27 suites / 246 tests / 0 failures / 0 errors / 0 skipped，lint 0 errors / 38 warnings，Debug APK SHA-256 `CC7CF1DB890F446B82CCB507BAEF886F04BDBBCD78C6F69D35CE3F263978E282`。
+- 后续通过 `192.168.12.126:40131` 保留数据安装并读回 dev.12/code 16；真机确认图标点击被父手势抢走，且两台条目时底部关闭键覆盖刷新按钮，因此 R4/candidate.6 否决并由 R5/dev.13 取代。否决截图见 `docs/evidence/1C-PM-UI-02-R4/`。
+
+## 选择器实时在线列表与底部关闭：1C-PM-UI-02@R3（2026-09-26，dev.11，已装表/待交互验收）
+
+- 用户否决 dev.9 把关闭键仅向左移动的方案，要求放在下方居中；随后要求选择器打开期间，电脑端软件关闭后自动移除、重新开启后自动出现。冻结候选 `design/watch-ui/0.3.0-dev.2-candidate.4/` 将顶部关闭键彻底移除，48 dp 触控区固定在底部正中并留 8 dp 底边；`candidate.5/` 冻结实时在线行为与回滚源。
+- dev.11/code 15 让可见选择器连续运行既有有界认证浏览。新电脑通过认证即增量加入；每轮结束并行用既有 Bearer 探针复核所有可见条目，非当前电脑若既未发现又不再应答则移除。当前电脑离线只标记“未连接”并保留，恢复后原位回到在线；不自动切换、不因显示状态写设置。
+- 持续刷新仍由唯一 `ConnectionTaskOwner` 串行调度，只在选择器可见且应用前台时重复；关闭、退后台、点选、录音交接和销毁都会取消并等待当前轮结束，不新增后台轮询或并行 NSD listener。
+- 新增生产链回归覆盖“两台出现→关闭非当前后移除→关闭当前后保留离线→重新开启另一台后自动出现→当前恢复原位且不重复→关闭/后台后停止”。PM 全量 26 suites / 243 tests / 0 failures / 0 errors，lint 0 errors / 38 warnings，Debug build 成功；最终 APK SHA-256 `934CC882968ADC4FC6748FEC475547CB86FE40AC112EE62C162F75073494D305`。
+- 新端点 `192.168.12.126:44703` 已完成保留数据安装并返回 Success，设备读回 dev.11/code 15；冷启动 Ready 正常，系统旋转只读值仍为 0/0。随后手表进入 Doze，无线调试 mDNS 广播消失且 44703 拒绝连接，无法继续取得稳定的选择器画面。
+- **设备交互仍未验收**：本机 `.142:18099` 返回预期 401，第二台 `.153:18099` 无响应，故底部居中关闭触控及“两台均在线→关闭非当前自动消失→重开自动出现”不可写成真机通过。源码/build 与本轮部分设备证据见 `docs/evidence/1C-PM-UI-02-R3/`；待手表无线调试恢复且第二台电脑端在线后继续，不需重装。
+- 无 push/merge/tag/Release；Windows、协议、认证口径、录音/上传、Provider/ASR/History/Paste 均未改。R12-C/D/E 保持开放。
+
+## 电脑选择器等待与圆屏关闭中间版：1C-PM-UI-02@R2（2026-09-26，dev.9，视觉否决）
+
+- 用户指出 dev.8 每次进入“切换电脑”都必须等搜索结束才能选择，且关闭符号被圆屏边缘挡住。原因确认：候选在加入列表前已经通过既有 Bearer 认证，但 UI 仍用 `switchSearching` 整体禁用卡片；关闭按钮则贴在容器最右侧，没有为实体圆屏留足安全区。
+- dev.9/code 13 允许已认证候选一出现就点击。点击时停止剩余的 picker browse、代际拒绝迟到回调并保留当前目标/候选，再复用既有显式选择确认探针；确认成功才采用和持久化，拒绝则保留当前电脑，未降低认证门槛。关闭按钮保持 48 dp 触控区并向左移 18 dp。
+- PM 定向生产链回归通过；全量 26 suites / 242 tests / 0 failures / 0 errors，lint 0 errors / 38 warnings，Debug build 成功。APK SHA-256 `64B4ACAEF12703B00B6D7A3338E5F6AC8B6B52F2A7B3211F4B32ED54DFDA4BE6`；保留数据安装 Success，设备读回 dev.9/code 13。
+- 自动截图和坐标点击显示该图标可见、可返回 Ready，但用户实物复看确认仍被圆屏遮挡；用户证据优先，因此 dev.9 视觉验收否决并由底部居中的 candidate.4/dev.11 取代。旋转设置验收后仍为 0/0。本轮 `.142` 可达并返回预期 401，`.153` 无响应，因此不把新一轮“双机搜索中立即点选”写成真机通过；该时序由真实 ViewModel→owner→resolver→coordinator 回归覆盖。
+- 无 push/merge/tag/Release；R12-C/D/E 未验证项保持开放。正式自定义昵称仍需未来经过认证的身份元数据契约，不以本地伪昵称替代。
+
+## 电脑身份选择器实施与真机检查：1C-PM-UI-02@R1（2026-09-26，dev.8）
+
+- 用户确认先做出来看。PM 以冻结候选 `design/watch-ui/0.3.0-dev.2-candidate.2/` 为父版，只修改 Watch 选择器、相关字符串/测试和版本号；Windows、发现/认证、目标选择、录音/上传及 Provider/ASR/History/Paste 均未改。
+- dev.8/code 12 将主身份改为真实端点生成的 `电脑 · <IPv4 末段>`，卡片次行显示当前/在线/验证中状态和短 IP；当前项同时使用文字、蓝色和勾选，搜索中已认证候选即时出现但保持不可点，窗口结束后才可显式选择。完整自定义昵称仍未伪造，等待将来经过认证的可选 `deviceId/displayName/deviceType` 契约。
+- PM 最终全量 26 suites / 242 tests / 0 failures / 0 errors / 0 skipped，lint 0 error / 38 warnings，Debug build 成功；APK SHA-256 `C6A1ABB905542C6F6CE22802CAA76B91CAA1B3B84F6D1F8C53EFAAD38F27646E`。保留数据覆盖安装 Success，设备读回 `0.3.0-dev.8`/code 12。
+- Galaxy Watch 7 两台真实电脑同时在线：搜索中已显示 `.142` 当前与 `.153` 验证候选，完成态显示 2 台可用；显式点 `.153` 后当前勾选移到 `.153`，再点 `.142` 恢复 Ready。正式 APK 视觉截图及分层证据见 `docs/evidence/1C-PM-UI-02-R1/`。系统旋转前后均为 0，未写旋转设置。
+- 自动坐标复验中有一次在已返回 Ready 后误触麦克风；已立即点可见“取消”，未点结束、未触发上传，相关临时图不纳入验收。最终手表保持 `.142` Ready。无 push/merge/tag/Release；R12-C/D/E 未验证项保持开放。
+
+## R12-B 双电脑即时发现与显式切换：1C-PM-R12-B@R1（2026-09-26，通过）
+
+- 用户真实反馈“重新搜索仍看不到第二台笔记本”。PM 现场确认两台 Windows 端都可达，Watch 修复前同一轮已经发现、解析并认证两个端点，最终为 `verdict:ambiguous`；失败边界是已认证候选只在完整 8 秒窗口结束后一次性发布。连续点“重新搜索”会取消旧轮并重新计时，所以界面长期只显示当前电脑。
+- 产品提交 `2daf71594778dade9f49dc1146131287d426ec4b`：显式切换浏览把 authenticated-only 候选增量发布到既有 Resolver/UI 代际门控，完整窗口仍继续找更多电脑，普通自动发现的 0/1/多台判定不变；搜索中候选立即可见但窗口结束前禁用点选，避免隐藏浏览。候选为 dev.7/code 11。
+- PM 全量 25 suites / 237 tests / 0 failures / 0 errors / 0 skipped，lint 0 error / 39 warnings，Debug build 退出 0。APK SHA-256 `6A2DB354AA137D695FFEFA3B817DC2D3A742CF720B9EE5E74C8505D01A14D907`；保留数据安装成功并读回版本。
+- 双电脑真机：搜索仍显示“正在搜索…”时，`.142` 当前电脑和 `.153` 可选电脑已同时可见；窗口结束后点选 `.153` 成为当前电脑并保持 Ready，再显式切回 `.142` 成功。证据、哈希和测试条件恢复见 `docs/R12-PM-DUAL-DISCOVERY-DEV7.md` 与 `docs/evidence/R12-20260926/`。
+- 验收后用户报告界面再次旋转。现场不是产品传感器回归，而是 UI 自动化把设备全局留下为 `USER_ROTATION_LOCKED / ROTATION_90`，连系统界面都受影响；SayIt Activity 始终请求 Portrait。已用 `wm user-rotation lock 0` 恢复并读回 `ROTATION_0`，无产品源码修改；恢复截图和工具副作用说明见同一 R12-B 报告。后续使用 `uiautomator` 必须前后核对全局旋转。
+- **阶段 12 仍不关闭**：R12-C 尚缺 A/B 各一条真实录音的双向路由证据，R12-D 尚缺双机/重试重复检查，R12-E 尚缺真实转腕观察。R11 取消/返回和 R12-A 单机恢复的既有通过证据保留。无 push/merge/tag/Release，Windows R9 包未重建。
+
+## R12-A 前台自动恢复：1C-PM-R12-A@R1（2026-09-26，单电脑通过）
+
+- R12 真机验收暴露新缺陷：电脑恢复后日志已 `probe:authenticated / verdict:one`，但前台仍显示“等待认证结果…”。根因是前台进入先撤销在线投影，保留目标复验成功后旧代码只清 `connecting`，没有恢复 `connected/transportAvailable`。最小修复让成功探针通过既有 `setVerifiedDestination(current)` 重新发布同一已认证目标；未改 mDNS、认证、上传协议、UI 布局或 Windows 包。
+- 产品提交 `9ba58b79a4c8c917b81535d7240c3441c5c79143`。新增生产链回归修复前 1/1 红、修复后 1/1 绿；全量 25 suites / 236 tests / 0 failures / 0 errors / 0 skipped，lint 0 error / 39 warnings，Debug build 退出 0。候选为 dev.6/code 10，APK SHA-256 `69D944256548304307D84813A2C7AE45BF5294C9DD12EFA150775FE4F1CFB7FE`；保留数据安装并读回版本，冷启动成功。
+- 真机 R12-A：R9 停止后首页明确失联；原样重启后无需手输 IP、选电脑或重启 App 即恢复“已连接电脑”；切换页当前目标为 `192.168.12.142:18099`，取消返回仍保持连接。恢复后一次确认录音在 Windows 只形成一个 processing/final/fallback 链，未见业务重复。证据和命令见 `docs/R12-PM-RECOVERY-DEV6.md` 与 `docs/evidence/R12-20260926/`。
+- **阶段 12 仍不关闭**：双电脑发现/选择/取消/回切与 A/B 音频路由未验；重复上传只覆盖本轮单机一条；dev.5 起的竖屏仍缺真实转腕观察。无 push/merge/tag/Release，R9 Windows 包不重建。
+
 ## SayIt 应用竖屏固定（2026-09-25）
 
 用户要求关闭手表界面自动旋转。主 Activity 原未声明方向；PM 仅新增 `screenOrientation=portrait`，版本升为 dev.5/code 9。lintDebug/assembleDebug 退出 0，最终 APK 清单读回方向值 1（portrait）。保留数据安装 Success，设备读回 dev.5/code 9，冷启动成功。APK SHA-256 `2B906154F6341E7A014859276F7E97D4EBF71C39A3B29000079955AA4134669F`。未改系统旋转设置或 UI 布局；实物转腕效果待用户确认，原双电脑验收未关闭。

@@ -1,6 +1,16 @@
 # SayIt Watch Transport project progress
 
-当前工作：R10 单电脑真实 mDNS 发现与认证链已通过。`1C-D-04@R11` 取消切换后状态残留修复已提交 `c334e25`；PM 235/235、lint/build 通过，dev.4/code 8 已保留数据安装，用户真机复测回复“可以了”，本项验收关闭。双电脑选择/双向录音及前台晚启动恢复仍待验，阶段 12 保持开放。权威状态见 HANDOFF.md 顶部。
+当前 UI：`1C-PM-UI-02@R5` / Watch dev.13/code 17 已修复 dev.12 真机发现的触控竞争和底部覆盖：图标点按编辑、卡片正文点按切换、正文长按编辑，两个滚动页都避开固定底部关闭键。保留数据安装成功；两台电脑真机可见，`.142` 图标点按与 `.153` 长按分别进入正确自定义页，名称字段可打开编辑器，未误切当前 `.142`。三星 T9 的真实文字输入、保存后列表更新及恢复默认仍待用户手动体验。27 suites / 246 tests / 0 failure，lint 0 error / 38 warnings，Debug build 通过，最终 APK SHA-256 `174BAEC8F03A00FB215281473DC855DC77D63DFF3C7E7461F2F5714C2F1BA265`。冻结候选 `design/watch-ui/0.3.0-dev.2-candidate.7/`，证据见 `docs/evidence/1C-PM-UI-02-R5/`。
+
+上一版：`1C-PM-UI-02@R4` / dev.12 首次加入本地别名持久化和自定义页，自动化 246/246；但实机图标点击被整卡父手势抢走，且固定关闭键覆盖滚动内容，已否决并由 R5 取代。历史证据见 `docs/evidence/1C-PM-UI-02-R4/`。
+
+上一版：`1C-PM-UI-02@R3` / dev.11 完成选择器前台实时增删与底部居中关闭，243/243、lint/build 通过并已装表；但底部关闭触控与双机动态增删尚未完成真机验收，且没有电脑别名编辑入口。R4 仅补自定义入口和本地别名，不改变 R3 的在线刷新契约。历史证据见 `docs/evidence/1C-PM-UI-02-R3/`。
+
+上一中间版：`1C-PM-UI-02@R2` / dev.9 让搜索流式出现的已认证电脑可立即点击，并通过 242/242、lint/build 与保留数据安装；但把关闭按钮仅向左移 18 dp 的视觉方案被用户实物复看否决，已由 R3 的底部居中方案取代。本轮第二台 `.153` 不可达，因此即时点击只有生产链回归、没有新一轮双机真机复验。历史证据见 `docs/evidence/1C-PM-UI-02-R2/`。
+
+当前 UI：`1C-PM-UI-02@R1` 已按冻结候选实施为 Watch dev.8/code 12。电脑选择器使用 `电脑 · IPv4 末段` 作为可读主身份，状态与短 IP 为次信息，搜索中候选即时可见但仍在窗口结束前禁用；双电脑显式 `.142→.153→.142` 真机交互通过。242/242、lint 0 error、Debug build 与保留数据安装通过；正式自定义昵称元数据尚未实现。权威证据见 `HANDOFF.md` 顶部及 `docs/evidence/1C-PM-UI-02-R1/`。
+
+当前工作：`1C-PM-R12-B@R1` 产品提交 `2daf715` 已修复“双电脑均已认证，但候选要等完整 8 秒才显示；连续重新搜索会反复重置窗口”的真实缺陷。dev.7/code 11 全量 237/237、lint/build 通过并保留数据装表；真机在搜索仍进行时已显示 `.142` 当前电脑与 `.153` 可选电脑，显式切到 `.153` 后保持 Ready，再切回 `.142` 成功。验收工具随后把设备全局旋转遗留在 90°；已恢复并读回 0°锁定，产品 Activity 的 Portrait 声明始终有效。本项未新增产品修复。R12-B 双电脑发现/显示/选择/回切通过；A/B 各录一条的双向路由、双机/重试重复检查和真实转腕仍待验，阶段 12 保持开放。权威状态见 HANDOFF.md 顶部。
 
 2026-09-20 同步状态：已通过 PR #4 合入原有公开仓库 `Suzixuan/SayIt-Watch` 的 `main`，合并提交 `b561dc6d64f28199e1ba2105a2b407ac0ccc57cb`。新版源码、手表首页与截图已在默认分支，原历史保留；尚未发布对应安装包。交接方式见 `HANDOFF.md` 顶部。阶段 12 双电脑端到端验收仍未完成。
 
@@ -33,9 +43,9 @@ Delivery 1C Repair 1 (D, 2026-09-15, contract `docs/DELIVERY-1C-D-REPAIR-1.md`):
 | Security | 9 | Repository and runtime security hardening | ☐ | 🔵 PM re-review — repair required | PM | `83056ab` + `a7ddcac` are on `main`; CodeQL succeeds and GitHub protections are enabled. Remaining blockers: zero-token loopback behavior conflicts with the documented local default; diagnostics `timeline.json` still derives titles from raw logs and can retain transcript text; wildcard Watch bind remains an unresolved product/security exception. |
 | Packaging | 10 | Self-contained silent Windows portable build and Release | ☐ | 🔵 R9 测试便携包已启动；正式 Release 未完成 | Colleague D | R9 最终产品头 `e33b536`；PM 独立复跑 227/227，lint 0 error，ZIP 28 条哈希全对，包内 `git_head` 与 EXE 哈希正确。用户授权后已从该包启动，监听 18099 且 discovery 401 正常；本轮 Watch 类型校验缺陷不要求重建 Windows 包。测试包不关闭正式 Release。 |
 | Experience | 11 | Optional Wear OS Tile card | ☐ | ⚪ Deferred | Colleague D | Initial Tiles 1.2/1.4 implementation did not compile and was reverted; current tree is clean and contains no Tile feature. This is outside the core verified flow. |
-| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔵 单电脑发现、R11 取消切换修复通过；整体待验 | PM, Luna | R10 真机发现认证链通过；R11 `c334e25`，235/235、lint/build 通过，dev.4/code 8 已安装，用户返回交互复测通过。双电脑选择/双向录音及前台晚启动恢复尚未完整验收。见 HANDOFF.md 顶部。 |
+| Experience | 12 | Watch automatically discovers Windows SayIt | ☐ | 🔵 R12-B 双电脑发现/选择/回切通过；路由待验 | PM, Luna | R10/R11/R12-A 保持通过；R12-B dev.7/code 11 将已认证候选在 8 秒窗口内即时显示，237/237、lint/build 和真机 `.142↔.153` 显式选择/回切通过。A/B 各录一条的路由、双机/重试重复检查和真实转腕尚未验。见 HANDOFF.md 顶部。 |
 
-Current external slice: R11 本项验收通过，手表 dev.4/code 8；Windows R9 包保持不变。剩余双电脑与恢复场景继续按原 A-H 验收；阶段 12 尚未关闭。十连测、正式安全/Release 和 Wear Tile 仍独立开放。
+Current slice: `1C-PM-R12-B@R1` 双电脑发现、即时显示、显式选择与回切验收通过，手表 dev.7/code 11；Windows R9 包保持不变。下一步仅继续 A/B 各一条真实录音的双向路由、双机/重试重复检查与真实转腕；阶段 12 尚未关闭。十连测、正式安全/Release 和 Wear Tile 仍独立开放。
 
 Updated sequencing decision (user, 2026-08-29): colleague Z will do the Watch UI in the same task package as Z3 Repair 1, but only after the three Repair blockers pass automated verification. First real Galaxy Watch → existing SayIt → focused Windows input-box closure remains a later PM-unlocked device gate. The formal ten-run latency acceptance remains final.
 

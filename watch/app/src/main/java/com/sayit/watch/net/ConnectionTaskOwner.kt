@@ -68,10 +68,14 @@ class ConnectionTaskOwner(
     private val cancelTransport: () -> Unit,
     /** True only when an authenticated, usable computer exists right now. */
     private val isConnected: () -> Boolean,
+    /** Keep refreshing the explicit picker only while it is visibly open. */
+    private val keepBrowsing: () -> Boolean = { false },
     /** Wait before the next recovery round after a failed one. */
     private val retryDelayMs: Long = DefaultRetryDelayMs,
     /** Gap between two bounded health checks while a computer is in use. */
     private val healthCheckIntervalMs: Long = DefaultHealthCheckIntervalMs,
+    /** Short hand-off gap between two bounded picker browse windows. */
+    private val pickerRefreshDelayMs: Long = DefaultPickerRefreshDelayMs,
     /**
      * Revalidates the computer in use with ONE bounded authenticated probe.
      *
@@ -354,6 +358,8 @@ class ConnectionTaskOwner(
                     when {
                         // A real intent always beats the cadence.
                         queued != null -> startRound(queued)
+                        // A visible picker is a live presence view: run another bounded browse.
+                        keepBrowsing() -> startRound(Pending.BROWSE)
                         isConnected() -> startRound(null)
                         else -> startRound(Pending.SEARCH)
                     }
@@ -519,6 +525,7 @@ class ConnectionTaskOwner(
         if (isConnected()) kind = RoundKind.IDLE_CONNECTED
         val waitMs = when {
             pending != null -> 0L
+            keepBrowsing() -> pickerRefreshDelayMs
             isConnected() -> healthCheckIntervalMs
             else -> retryDelayMs
         }
@@ -540,5 +547,8 @@ class ConnectionTaskOwner(
 
         /** 1C-D-04@R7 §2A: idle revalidation cadence for the computer in use. */
         const val DefaultHealthCheckIntervalMs: Long = 5_000L
+
+        /** Picker-only cadence; every browse still owns the frozen bounded 8 s window. */
+        const val DefaultPickerRefreshDelayMs: Long = 750L
     }
 }
