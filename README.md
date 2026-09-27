@@ -12,6 +12,51 @@ Galaxy Watch 负责录音和选择电脑；Windows SayIt 继续负责语音识�
 
 </div>
 
+## 先安装：从下载到连上电脑
+
+不需要下载源码，也不需要 Android Studio。先从 [GitHub 最新版本](https://github.com/Suzixuan/SayIt-Watch/releases/latest) 下载：
+
+- `SayIt-Watch-0.3.0-dev.13-windows-watch-bundle.zip`：推荐，里面同时有 Windows SayIt、手表 APK 和两个安装入口；
+- `SayIt-Watch-0.3.0-dev.13.apk`：只想更新手表时使用。
+
+> 这是可信局域网内使用的 **Debug 测试包**，不是正式安全 Release。不要在公共 Wi-Fi 使用，也不要把 Token 发给别人。
+
+### 第一步：配置并启动电脑端
+
+1. 把 ZIP **完整解压**到一个普通文件夹，不要直接在压缩包里运行。
+2. 双击 `1-Setup-PC.cmd`。
+3. 第一次使用时选择电脑的 Wi-Fi 局域网 IP；脚本会生成 Token、写入配置并启动 SayIt。
+4. Windows 防火墙询问时，只勾选 **专用网络**。
+
+已有有效配置会保留，不会替换 Token。脚本只接受 `10.x`、`172.16–31.x` 或 `192.168.x` 的明确局域网地址，不会配置 `0.0.0.0`。
+
+### 第二步：把 SayIt 安装到 Galaxy Watch
+
+1. 下载并解压 Google 官方 [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools)。把解压后的 `platform-tools` 文件夹放进 SayIt 安装包目录。
+2. 手表进入「设置 → 关于手表 → 软件信息」，连续点按软件版本直到开发者模式开启。
+3. 回到「设置 → 开发者选项」，开启 **ADB 调试**和**无线调试**。
+4. 双击电脑上的 `2-Install-Watch.cmd`。
+5. 按窗口提示，在手表「无线调试 → 使用配对码配对设备」中读取配对地址和配对码；随后返回上一页读取真正的连接地址。两个端口通常不同。
+6. 脚本会安装 `SayIt-Watch.apk`。首次安装会把电脑端的同一个 Token 写入手表应用私有配置；升级安装会保留原 Token、电脑名称和设置。
+
+ADB 配对的标准流程可对照 Android 官方的 [Wear OS 无线调试说明](https://developer.android.com/training/wearables/get-started/debug-wifi)。
+
+### 第三步：确认已经连通
+
+1. 保持电脑和手表连接同一个可信 Wi-Fi。
+2. 电脑端 SayIt 保持运行；手表打开 SayIt，等待数秒。
+3. 手表出现「已连接电脑」后，在 Windows 打开记事本并点进输入框。
+4. 手表点麦克风，说一句话后结束；识别完成后，文字应进入刚才选中的输入框。
+
+如果一直没有连上：
+
+- 确认电脑端仍在运行，Windows 网络类型是「专用网络」；
+- 确认路由器没有开启 AP/客户端隔离；
+- 手表和电脑必须能互相访问，访客 Wi-Fi 通常不行；
+- 在手表「连接设置」里检查 Token；自动发现仍失败时再展开手动设置，填写电脑 IP 和端口 `18099`。
+
+第二台电脑也想出现在手表列表时，在第二台运行 `1-Setup-PC.cmd`，按提示安全粘贴第一台电脑的同一个 Token；每台电脑使用各自的局域网 IP。
+
 <div align="center">
 
 <img src="docs/images/readme/watch/ready-connected-r4.png" width="220" alt="Galaxy Watch 7 真机：SayIt 已连接电脑">
@@ -97,15 +142,12 @@ Galaxy Watch → 同一可信 Wi-Fi → Windows SayIt
 
 </div>
 
-## 怎么使用
+## 日常使用
 
-1. 在可信的同一 Wi-Fi 下运行本仓库的 Windows **Debug** 接收端。
-2. 首次使用时，在 Watch「连接设置」中输入电脑端生成的 64 位十六进制 Token。
-3. Watch 自动发现并认证电脑，进入 Ready。
-4. 在 Windows 上先点好准备接收文字的输入框。
-5. 点 Watch 中央麦克风开始录音，说完结束；等待 Windows 完成识别并写入。
-6. 有多台电脑时进入「设置 → 切换电脑」。点卡片切换；点铅笔或长按卡片自定义名称。
-7. 自动发现不可用时，再在「连接设置」里填写手动地址。
+- Windows SayIt 保持运行，手表和电脑保持在同一可信 Wi-Fi。
+- 先在电脑点好目标输入框，再从手表录音；结束后等待文字写入。
+- 多台电脑时进入「设置 → 切换电脑」：点卡片切换，点铅笔或长按卡片修改本地名称。
+- 电脑关闭后会从可选列表移除；重新启动并通过认证后会重新出现。当前电脑离线时会保留并显示「未连接」。
 
 ## 最新验证状态
 
@@ -133,7 +175,6 @@ Galaxy Watch → 同一可信 Wi-Fi → Windows SayIt
 ```powershell
 git clone https://github.com/Suzixuan/SayIt-Watch.git
 cd SayIt-Watch
-git switch codex/watch-connection-r7
 ```
 
 开始前先读：
@@ -151,7 +192,7 @@ cd watch
 
 Debug APK 会生成在 `watch/app/build/outputs/apk/debug/`，但 `*.apk` 已被忽略，不进入 Git 历史。凭证、`local.properties`、设备序列号、录音、模型、安装包和构建缓存都必须留在本机。
 
-本开发快照没有对应的正式 Windows 安装包或 GitHub Release；仓库中的旧便携产物不代表当前 dev.13 源码。
+GitHub Release 提供的是 Debug 测试包；正式安全 Release、签名安装器和自动更新渠道仍未完成。
 
 ## 许可证与来源
 

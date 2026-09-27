@@ -2,7 +2,7 @@
 #
 # One ZIP, one entry point, both PCs. Produces:
 #
-#   SayIt-Watch-0.3.0-dev.2-windows-x64-portable.zip
+#   SayIt-Watch-0.3.0-dev.13-windows-watch-bundle.zip
 #
 # containing a Tauri **Debug** build whose frontend is EMBEDDED (`frontendDist`), so the
 # unpacked application starts on any Windows PC without this source tree, without Node,
@@ -26,8 +26,11 @@ param(
     # Output directory for the ZIP (gitignored). Defaults to <repo>/dist-portable.
     [string]$OutputDir,
     # Explicit product commit to record in BUILD-INFO. Defaults to the current HEAD, which is
-    # the product commit when the worktree is clean (the normal case).
+    # the bundle/Watch commit when the worktree is clean (the normal case).
     [string]$ProductCommit,
+    # Commit that produced SayIt.exe. Normally this is the bundle commit. Supply an older commit
+    # only with -SkipBuild after independently proving the desktop runtime sources are unchanged.
+    [string]$WindowsBinaryCommit,
     # 1C-D-04@R9: generate ONLY the notes a real package would ship (README-PORTABLE.txt +
     # BUILD-INFO.txt) into -OutputDir, run the same static checks on them, and stop. It performs
     # no build, copies nothing and writes no ZIP, so a test can assert on the REAL generated
@@ -43,7 +46,7 @@ $clientDir = Join-Path $repoRoot 'client'
 $tauriDir = Join-Path $clientDir 'src-tauri'
 if (-not $OutputDir) { $OutputDir = Join-Path $repoRoot 'dist-portable' }
 
-$packageBase = 'SayIt-Watch-0.3.0-dev.2-windows-x64-portable'
+$packageBase = 'SayIt-Watch-0.3.0-dev.13-windows-watch-bundle'
 $zipPath = Join-Path $OutputDir "$packageBase.zip"
 $stagingDir = Join-Path $OutputDir $packageBase
 
@@ -63,10 +66,23 @@ SayIt Watch Transport — unified Windows Debug test package
 =========================================================
 
 Package     : @PACKAGE@
-Built from  : committed product head @GIT_HEAD@
+Bundle/Watch: committed product head @GIT_HEAD@
+Windows EXE : committed desktop-runtime head @WINDOWS_BINARY_COMMIT@
 Build type  : Tauri Debug build with the frontend EMBEDDED in the executable.
 Entry point : SayIt.exe  (same file on every PC — there is no per-PC package)
-Watch app   : 0.3.0-dev.2 (versionCode 6)
+Watch app   : 0.3.0-dev.13 (versionCode 17)
+
+Quick install
+-------------
+1. Extract the complete folder. Do not run the app from inside the ZIP.
+2. Double-click 1-Setup-PC.cmd. It selects an explicit private-LAN IPv4, creates or preserves
+   the local token, writes the receiver config and starts SayIt.
+3. Allow SayIt through Windows Firewall on Private networks only.
+4. Put Android SDK platform-tools beside this folder (or add adb.exe to PATH), then double-click
+   2-Install-Watch.cmd. It guides pairing, installs SayIt-Watch.apk and provisions the same token
+   on a first-time Watch install.
+5. Keep the PC and Watch on the same trusted Wi-Fi. Open Notepad, focus its input box, record on
+   the Watch and stop; the recognized text should appear in the focused input box.
 
 Why this is one package for every PC
 ------------------------------------
@@ -75,35 +91,25 @@ application starts on its own. It does NOT need this source tree, Node, npm, Vit
 localhost:1420/1421 frontend server. The Debug HTTP receiver and its DNS-SD advertisement are
 unchanged and remain debug-only.
 
-First run on a PC (read this once per computer)
------------------------------------------------
-1. Unpack this folder anywhere. A path with spaces or Chinese characters is fine.
-2. Run SayIt.exe.
-3. The watch receiver needs THIS computer's own connection configuration:
-       @RECEIVER_CONFIG@
-   Example (64-hex token; the field name is fixed):
-       {"bindIp":"0.0.0.0","port":18099,"devToken":"<this computer's watch token>"}
-   If that file is missing, the app shows a short notice naming this exact path — it will
-   not tell you to use the desktop Settings page, because that page configures a different
-   feature and cannot set this token.
-4. Bring the token over yourself, by a channel you trust (for example from the computer that
-   already works, using your own encrypted or otherwise private transfer). This package
-   never copies, generates or transmits a token, and no token is included in it.
-5. If the notice instead says the receive port could not be bound, some other program is
-   already using it. Close that program and start SayIt again; this app never ends another
-   process for you.
-6. The PC also needs its own ASR/provider configuration. None of it is copied between
-   computers by this package.
+Connection details
+------------------
+The receiver configuration stays at:
+    @RECEIVER_CONFIG@
+1-Setup-PC.cmd writes an explicit RFC1918 address; it never recommends wildcard binding. If a
+valid config already exists, it preserves the devToken field. For multiple PCs, you must bring the
+token over yourself through a channel you trust and use the same token on every PC to be discovered.
+The desktop still needs its own ASR/provider configuration; models and credentials are not copied.
 
 What this package does NOT contain
 ----------------------------------
 No configuration, no token or credential, no model file, no user history, no received audio,
 no source tree, no node_modules, no installer, and no release/auto-update channel.
 
-Unverified by the packager
---------------------------
-Real-device (Galaxy Watch) discovery, two-PC switching and recording-to-text were NOT
-verified by the packager of this ZIP. Those remain with the project owner.
+Current verification boundary
+-----------------------------
+Galaxy Watch 7 discovery, one real recording-to-text path, two-PC switching and the dev.13 picker
+interactions have device evidence. Multi-PC recording routes, repeated-run acceptance and a formal
+security Release remain incomplete. This is a Debug test bundle, not a production installer.
 '@
 
 <#
@@ -115,11 +121,13 @@ function New-PortableNotes {
     param(
         [Parameter(Mandatory)][string]$Directory,
         [Parameter(Mandatory)][string]$ExeHash,
-        [Parameter(Mandatory)][string]$GitHead
+        [Parameter(Mandatory)][string]$GitHead,
+        [Parameter(Mandatory)][string]$WindowsBinaryGitHead
     )
     $text = $buildInfoTemplate.
         Replace('@PACKAGE@', $packageBase).
         Replace('@GIT_HEAD@', $GitHead).
+        Replace('@WINDOWS_BINARY_COMMIT@', $WindowsBinaryGitHead).
         Replace('@RECEIVER_CONFIG@', $receiverConfigRelative)
     [System.IO.File]::WriteAllText((Join-Path $Directory 'README-PORTABLE.txt'), $text, $utf8NoBom)
 
@@ -130,8 +138,11 @@ function New-PortableNotes {
         'entry=SayIt.exe',
         'build=debug',
         'frontend=embedded',
-        'watch=0.3.0-dev.2 (versionCode 6)',
+        'watch=0.3.0-dev.13 (versionCode 17)',
         "git_head=$GitHead",
+        "bundle_git_head=$GitHead",
+        "watch_git_head=$GitHead",
+        "windows_exe_git_head=$WindowsBinaryGitHead",
         "receiver_config=$receiverConfigRelative",
         "SayIt.exe.sha256=$ExeHash"
     )
@@ -150,7 +161,8 @@ function New-PortableNotes {
 function Test-PortableNotes {
     param(
         [Parameter(Mandatory)][string]$Directory,
-        [Parameter(Mandatory)][string]$GitHead
+        [Parameter(Mandatory)][string]$GitHead,
+        [Parameter(Mandatory)][string]$WindowsBinaryGitHead
     )
     foreach ($noteName in @('README-PORTABLE.txt', 'BUILD-INFO.txt')) {
         $notePath = Join-Path $Directory $noteName
@@ -171,7 +183,11 @@ function Test-PortableNotes {
         'frontendDist',
         'SayIt.exe',
         'watch-receiver.config.json',
-        'devToken'
+        'devToken',
+        '1-Setup-PC.cmd',
+        '2-Install-Watch.cmd',
+        'SayIt-Watch.apk',
+        'RFC1918'
     )) {
         if (-not $readmeText.Contains($required)) {
             Fail "README-PORTABLE.txt must mention $required"
@@ -181,6 +197,9 @@ function Test-PortableNotes {
     if ($readmeText.Contains([char]0xFFFD)) {
         Fail 'README-PORTABLE.txt was not written as clean UTF-8'
     }
+    if ($readmeText.Contains('"bindIp":"0.0.0.0"')) {
+        Fail 'README-PORTABLE.txt must not recommend wildcard binding'
+    }
     foreach ($forbidden in @('SayIt 设置', '服务器访问令牌')) {
         if ($readmeText.Contains($forbidden)) {
             Fail "README-PORTABLE.txt must not point at the non-existent destination $forbidden"
@@ -189,6 +208,9 @@ function Test-PortableNotes {
     $buildInfoText = [System.IO.File]::ReadAllText((Join-Path $Directory 'BUILD-INFO.txt'), [System.Text.Encoding]::UTF8)
     if (-not $buildInfoText.Contains("git_head=$GitHead")) {
         Fail 'BUILD-INFO.txt must record the product commit it was built from'
+    }
+    if (-not $buildInfoText.Contains("windows_exe_git_head=$WindowsBinaryGitHead")) {
+        Fail 'BUILD-INFO.txt must record the commit that produced SayIt.exe'
     }
     if (-not $buildInfoText.Contains('frontend=embedded')) {
         Fail 'BUILD-INFO.txt must record that the frontend is embedded'
@@ -203,23 +225,33 @@ if (-not (Test-Path (Join-Path $tauriDir 'tauri.conf.json'))) {
 # The recorded product commit must be traceable. 1C-D-04@R8 P1: the package must be built from a
 # CLEAN, COMMITTED product head, so `git rev-parse HEAD` really is the product commit and a dirty
 # tree (uncommitted product source) can never be shipped under a hash that does not describe it.
-function Get-GitValue([string[]]$arguments) {
+function Invoke-GitValue([string[]]$arguments) {
     try {
-        $value = (& git -C $repoRoot @arguments 2>$null | Out-String).Trim()
-        if ($value) { return $value }
+        $output = & git -C $repoRoot @arguments 2>$null
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -eq 0) {
+            return [PSCustomObject]@{
+                Success = $true
+                Value = (($output | Out-String).Trim())
+            }
+        }
     } catch { }
-    return $null
+    return [PSCustomObject]@{ Success = $false; Value = $null }
 }
 
-$gitStatus = Get-GitValue @('status', '--porcelain')
-if ($null -eq $gitStatus) {
+$gitStatusResult = Invoke-GitValue @('status', '--porcelain')
+if (-not $gitStatusResult.Success) {
     Write-Host '   note: git is unavailable; the product commit cannot be verified' -ForegroundColor Yellow
     $dirty = $false
+    $gitStatus = ''
 } else {
+    $gitStatus = $gitStatusResult.Value
     $dirty = $gitStatus.Length -gt 0
 }
-$baselineCommit = if ($ProductCommit) { $ProductCommit } else { Get-GitValue @('rev-parse', 'HEAD') }
+$headResult = Invoke-GitValue @('rev-parse', 'HEAD')
+$baselineCommit = if ($ProductCommit) { $ProductCommit } elseif ($headResult.Success) { $headResult.Value } else { $null }
 if (-not $baselineCommit) { $baselineCommit = 'unknown' }
+$windowsCommit = if ($WindowsBinaryCommit) { $WindowsBinaryCommit } else { $baselineCommit }
 
 # ── 1C-D-04@R9: -NotesOnly — generate the REAL notes and stop ─────────────────
 # The unit tests must assert on the notes a package would really ship, not on a copy of the
@@ -231,8 +263,8 @@ if ($NotesOnly) {
     $notesDir = if ($OutputDir) { $OutputDir } else { Join-Path $repoRoot 'dist-portable\notes-preview' }
     if (-not (Test-Path $notesDir)) { New-Item -ItemType Directory -Path $notesDir -Force | Out-Null }
     Write-Step "Generating the shipped notes only (no build, no ZIP) into $notesDir"
-    New-PortableNotes -Directory $notesDir -ExeHash 'not-built' -GitHead $baselineCommit
-    Test-PortableNotes -Directory $notesDir -GitHead $baselineCommit
+    New-PortableNotes -Directory $notesDir -ExeHash 'not-built' -GitHead $baselineCommit -WindowsBinaryGitHead $windowsCommit
+    Test-PortableNotes -Directory $notesDir -GitHead $baselineCommit -WindowsBinaryGitHead $windowsCommit
     Write-Host "NOTES-README=$notesDir\README-PORTABLE.txt"
     Write-Host "NOTES-BUILDINFO=$notesDir\BUILD-INFO.txt"
     Write-Host 'Notes-only run complete' -ForegroundColor Green
@@ -251,6 +283,7 @@ if ($dirty -and $ProductCommit) {
 }
 
 $frontendDist = Join-Path $clientDir 'dist'
+$watchApkPath = Join-Path $repoRoot 'watch\app\build\outputs\apk\debug\app-debug.apk'
 
 # ── 1. Frontend: BUILD-TIME ONLY. The result is embedded in the EXE ────────────
 if (-not $SkipBuild) {
@@ -343,6 +376,22 @@ New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
 Copy-Item $exePath (Join-Path $stagingDir 'SayIt.exe') -Force
 
+if (-not (Test-Path -LiteralPath $watchApkPath)) {
+    Fail 'Watch Debug APK is missing. Build watch/app assembleDebug before packaging.'
+}
+Copy-Item $watchApkPath (Join-Path $stagingDir 'SayIt-Watch.apk') -Force
+
+foreach ($helper in @(
+    '1-Setup-PC.cmd',
+    '2-Install-Watch.cmd',
+    'Setup-PC.ps1',
+    'Install-Watch.ps1'
+)) {
+    $source = Join-Path $PSScriptRoot $helper
+    if (-not (Test-Path -LiteralPath $source)) { Fail "setup helper is missing: $helper" }
+    Copy-Item $source (Join-Path $stagingDir $helper) -Force
+}
+
 # Runtime libraries the app loads next to itself: the transcribe/ggml backend DLLs the
 # build staged, plus any MSVC runtime DLL the toolchain copied beside the EXE.
 $dllSources = @(
@@ -371,7 +420,7 @@ $exeHash = (Get-FileHash (Join-Path $stagingDir 'SayIt.exe') -Algorithm SHA256).
 
 # 1C-D-04@R9: the shipped notes come from the ONE template inside New-PortableNotes, so a real
 # package and the -NotesOnly gate the unit tests run can never drift apart.
-New-PortableNotes -Directory $stagingDir -ExeHash $exeHash -GitHead $baselineCommit
+New-PortableNotes -Directory $stagingDir -ExeHash $exeHash -GitHead $baselineCommit -WindowsBinaryGitHead $windowsCommit
 
 # ── 5. SHA256SUMS over the payload (not over itself) ──────────────────────────
 Write-Step 'Computing SHA256SUMS'
@@ -390,7 +439,7 @@ $lines = foreach ($file in $payload) {
 # control character while the package was generated. The SAME gate runs in -NotesOnly mode, so
 # it cannot be satisfied by wording that was never generated.
 Write-Step 'Checking the generated notes (text, path, no control characters)'
-Test-PortableNotes -Directory $stagingDir -GitHead $baselineCommit
+Test-PortableNotes -Directory $stagingDir -GitHead $baselineCommit -WindowsBinaryGitHead $windowsCommit
 
 # ── 6. ZIP ────────────────────────────────────────────────────────────────────
 Write-Step "Creating $zipPath"

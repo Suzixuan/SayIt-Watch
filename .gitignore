@@ -38,6 +38,10 @@ client/scripts/*
 # 1C-D-04@R7: the reproducible unified portable-package build script is source, not an
 # artifact — only its OUTPUT is ignored.
 !client/scripts/package-watch-portable.ps1
+!client/scripts/Setup-PC.ps1
+!client/scripts/Install-Watch.ps1
+!client/scripts/1-Setup-PC.cmd
+!client/scripts/2-Install-Watch.cmd
 client/dist/
 # 1C-D-04@R7 portable package output (ZIP + expanded staging), never committed
 dist-portable/
