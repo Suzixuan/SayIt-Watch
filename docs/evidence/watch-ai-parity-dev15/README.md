@@ -15,6 +15,16 @@ The Watch external-ingress path used to force `disableAi: true` at both Provider
 - New row checks: `asr_text != llm_text`; `llm_ms=568`; AI provider/model=`deepseek/deepseek-v4-flash`; duration=`2.64s`.
 - This verifies an actual AI call through the Watch external-ingress path, not only mocked Provider options.
 
+## Full Galaxy Watch 7 acceptance
+
+- Device class: SM-L310 / Galaxy Watch7, API 36.
+- The existing side-by-side `com.sayit.watch.universaltest` dev.14 sidecar was used, so the original `com.sayit.watch.debug` dev.13 installation remained untouched.
+- The sidecar reached `MIC READY / 已连接电脑`, started a real microphone recording, stopped after 26.84 seconds and uploaded over Wi-Fi to the dev.15 Windows EXE.
+- The receiver WAV timestamp changed, a new History row was created, and the Watch returned to Ready.
+- New row checks: `asr_text != llm_text`; `llm_ms=480`; AI provider/model=`deepseek/deepseek-v4-flash`.
+- Therefore the full Watch microphone → Wi-Fi upload → Windows ASR → AI cleanup → History path passed on hardware. Audio and transcript text remain local and are not committed.
+- `watch7-ready-after-live-ai.png` is the post-run Ready screen; SHA-256 `C7AAE753D03FD34561FFBF0A33A94149365BFC1C539E6D34E8CBC25CFA6B9DC7`.
+
 ## Automated/build evidence
 
 - Windows frontend: 31 test files, 371 tests, 0 failures; `tsc && vite build` passed.

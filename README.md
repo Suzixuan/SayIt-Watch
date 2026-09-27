@@ -181,6 +181,7 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 - Galaxy Watch 7 单电脑自动发现、认证、前台恢复和 Ready 显示。
 - 一段真实 Watch WAV 进入 Windows 现有识别链并写入目标输入框。
 - 同一段真实 Watch WAV 经 dev.15 新 EXE 重放后实际调用 AI：History 中 `llmMs > 0` 且整理结果不同于 ASR 原文。
+- Galaxy Watch 7 现场录音经 Wi-Fi 上传到 dev.15 Windows 后，真实完成 ASR、DeepSeek AI 整理并写入 History；手表正常返回 Ready。
 - 两台电脑同时在线时即时出现、显式 `.142 → .153 → .142` 切换。
 - dev.13 真机图标点按进入当前电脑自定义页。
 - dev.13 真机长按另一台电脑进入正确自定义页，且不会误切当前目标。
