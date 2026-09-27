@@ -1,0 +1,3 @@
+mode,threshold_s,duration_s,total_frames_rendered,janky_frames,janky_pct
+bright_animated,180,30,1815,3,0.17
+low_power_after_10s,10,30,632,24,3.80

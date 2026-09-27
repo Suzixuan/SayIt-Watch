@@ -8,7 +8,7 @@
 
 Wear OS 3+ 手表负责录音和选择电脑；Windows SayIt 继续负责语音识别、AI 整理、History 与文字插入。
 
-当前开发快照：**SayIt Watch 0.3.0-dev.15 / code 19**
+当前可下载测试版：**SayIt Watch 0.3.0-dev.16 / code 20**
 
 </div>
 
@@ -16,8 +16,8 @@ Wear OS 3+ 手表负责录音和选择电脑；Windows SayIt 继续负责语音�
 
 不需要下载源码，也不需要 Android Studio。先从 [GitHub 最新版本](https://github.com/Suzixuan/SayIt-Watch/releases/latest) 下载：
 
-- `SayIt-Watch-0.3.0-dev.15-windows-wear-os-bundle.zip`：推荐，里面同时有 Windows SayIt、Wear OS APK 和两个安装入口；
-- `SayIt-Watch-0.3.0-dev.15.apk`：只想更新手表时使用。
+- `SayIt-Watch-0.3.0-dev.16-windows-wear-os-bundle.zip`：首次安装推荐，里面同时有 Windows SayIt、Wear OS APK 和两个安装入口；
+- `SayIt-Watch-0.3.0-dev.16.apk`：电脑端已配置好、只想更新手表时使用。
 
 > 这是可信局域网内使用的 **Debug 测试包**，不是正式安全 Release。不要在公共 Wi-Fi 使用，也不要把 Token 发给别人。
 
@@ -94,7 +94,7 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 
 手表只确认录音已交给电脑，不会把“上传成功”伪装成“文字已经插入”。**目标输入框里真正出现文字，完整链路才算成功。**
 
-## 从最初版本到 dev.15
+## 从最初版本到 dev.16
 
 ### 1. 手表录音与完整音频传输
 
@@ -153,6 +153,12 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 - AI 开启时，沿用当前提示词预设、应用规则、热词、语言和最短整理时长；启用上下文感知写作时，也使用同一隐私边界读取目标输入框上下文。
 - AI 关闭时仍只做语音识别，不会暗中调用 AI，也不会改写用户保存的设置。
 
+### 9. 可设置的低功耗录音界面
+
+- 在手表「设置 → 连接设置 → 低功耗界面（秒）」设置切换时间，默认 10 秒，可填 1–180 秒。
+- 阈值前保持原来的亮色动态波形；到时自动切到黑底静态波形，录音计时仍每秒更新。点波形结束录音，底部「取消并丢弃」放弃本次录音。
+- Galaxy Watch 7 初测显示 30 秒内渲染帧数从 1815 降到 632；两组 165 秒电量计都显示 3.692 mAh，尚不能据此断言续航提升。实际续航需要长期观察。
+
 ## 当前界面
 
 <div align="center">
@@ -164,6 +170,18 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 <img src="docs/images/readme/watch/settings-r3.png" width="220" alt="Galaxy Watch 7 真机：设置菜单">
 
 <p><em>录音页、名称编辑页和设置入口。</em></p>
+
+</div>
+
+<div align="center">
+
+<img src="docs/images/readme/watch/recording-dev16-before.png" width="220" alt="Galaxy Watch 7：低功耗阈值前的亮色录音界面">
+&nbsp;
+<img src="docs/images/readme/watch/recording-dev16-low-power.png" width="220" alt="Galaxy Watch 7：阈值后的黑底静态录音界面">
+&nbsp;
+<img src="docs/images/readme/watch/connection-low-power-setting-dev16.png" width="220" alt="低功耗切换秒数位于连接设置中，示例为 10 秒">
+
+<p><em>dev.16：真机录音前后界面与连接设置示意图。</em></p>
 
 </div>
 
@@ -182,13 +200,14 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 - 一段真实 Watch WAV 进入 Windows 现有识别链并写入目标输入框。
 - 同一段真实 Watch WAV 经 dev.15 新 EXE 重放后实际调用 AI：History 中 `llmMs > 0` 且整理结果不同于 ASR 原文。
 - Galaxy Watch 7 现场录音经 Wi-Fi 上传到 dev.15 Windows 后，真实完成 ASR、DeepSeek AI 整理并写入 History；手表正常返回 Ready。
+- dev.16 在 Galaxy Watch 7 上保留数据升级；10 秒阈值前后界面、设置保存与重启持久化、取消返回 Ready 已实测。Watch 258 项单测、lint、Debug/Release 构建通过。
 - 两台电脑同时在线时即时出现、显式 `.142 → .153 → .142` 切换。
 - dev.13 真机图标点按进入当前电脑自定义页。
 - dev.13 真机长按另一台电脑进入正确自定义页，且不会误切当前目标。
 - 名称字段能打开编辑界面与三星输入法；列表和自定义页的底部关闭键不遮挡内容。
-- Watch 自动化：28 suites / 253 tests / 0 failures / 0 errors；lint 0 error。
+- Watch 自动化：30 suites / 258 tests / 0 failures / 0 errors；lint 0 error。
 - Windows 前端自动化：31 test files / 371 tests / 0 failures；TypeScript/Vite 构建通过。
-- dev.15 Manifest 与安装脚本的通用 Wear OS 3+ 能力门槛已通过源码和构建验证；Watch 外部录音的 AI 开关与提示词路由已有回归测试。
+- 通用 Wear OS 3+ 能力门槛已通过源码和构建验证；Watch 外部录音的 AI 开关与提示词路由已有回归测试。
 
 仍待完成：
 
@@ -197,6 +216,7 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 - 真实关闭/重开第二台 Windows 软件，确认选择器中的自动消失/重新出现时序。
 - 两台电脑各完成一条真实录音路由，以及后续重复/连续运行验收。
 - 正式发布链路；当前 Watch HTTP 接收/发送能力仍是 Debug-only。
+- 低功耗界面对实际续航的影响需要长期观察；本轮电量计分辨率不足以测出差异。
 
 详细证据和未完成项见 [HANDOFF.md](HANDOFF.md)、[PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) 与 [dev.13 真机证据](docs/evidence/1C-PM-UI-02-R5/README.md)。
 

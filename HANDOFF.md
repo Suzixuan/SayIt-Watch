@@ -1,9 +1,10 @@
 # SayIt Watch Transport handoff
 
-## 低功耗录音界面实施：0.3.0-dev.3-candidate.2（2026-09-26，开发中）
+## 低功耗录音界面与 GitHub 更新：0.3.0-dev.16（2026-09-27，真机初验通过）
 
-- 用户将 candidate.1 的固定切换时间改为连接设置中的可配置秒数：默认 10 秒、有效范围 1–180 秒；短录音保持现有亮色动态界面，超过设置值才切到黑底静态波形，计时仍按 1 Hz 更新。正式修改前的 dev.15 源码、参考图、Watch7 截图和 165 秒电量基线已冻结到 `design/watch-ui/0.3.0-dev.3-baseline.1/`。基线在固定亮度 98、未播放媒体、取消丢弃录音的条件下为 198,232→195,108 µAh，即 3.124 mAh；History 保持 81 条。该单次读数受约 568 µAh 电量计数步长影响，只作同机 A/B 基线。正式产品源码尚未在本记录点修改。
-- Watch dev.16/code 20 源码已实现：`SettingsStore` 新增本地 `low_power_after_seconds`，连接设置提供数字输入和 1–180 校验；精确录音采样计数继续逐块更新，Compose 可见计数改为每个整秒最多发布一次；达到阈值后移除无限波形动画并切换黑底静态表盘，Stop/Cancel、保持亮屏、180 秒上限和上传链未改。30 suites / 258 tests / 0 failures，lint 0 errors / 38 warnings，Debug/Release build 通过；Debug APK 20,798,940 bytes，SHA-256 `963E56BFB4DB7F4703AA04C8644A0FFFF8C64025F9B8EEA50A0C39AE48D67FE4`。无线 ADB 首次安装因文件传输协议错误失败，设备仍为 dev.15；真机 UI、设置持久化和新版同条件电量 A/B 尚待完成。
+- 用户要求在「连接设置」中配置低功耗切换秒数；Watch dev.16/code 20 已实现默认 10 秒、有效范围 1–180 秒，阈值前保留亮色动画、阈值后黑底静态波形与 1 Hz 计时。真机测试确认设置保存/冷启动持久化、5 秒亮界面、12 秒暗界面、取消返回 Ready；重叠底部刻度的首次修正版保留为否决图，最终布局通过。视觉与原始 A/B 证据冻结于 `design/watch-ui/0.3.0-dev.3-candidate.2/`，旧候选和 dev.15 基线保持不变。
+- 同一 dev.16 二进制在 Watch7 上做 165 秒 A/B：阈值 180 秒与 10 秒的电量计均显示消耗 3.692 mAh；30 秒渲染帧数 1815→632，表温变化分别为 +3.0°C 与 +0.1°C。可以确认渲染量与本次温升有差异；续航收益需长期观察。用户已明确结束本轮测量。自动亮度已恢复、0° 方向锁定、阈值留在 10 秒。
+- 30 suites / 258 tests / 0 failures，lint 0 errors / 38 warnings，Debug/Release APK 构建通过。最终 Debug APK 21,126,192 bytes，SHA-256 `95B0BD3BA2096805685AF0BF26C83282D4A52F920E4919274D559F1B2E6DEE5C`，已保留数据安装在 Galaxy Watch7。README 和发布包更新至 dev.16 的 GitHub 交付在本轮进行；包内 Windows EXE 继续采用已验收 dev.15 AI 修复构建，桌面产品源码没有新变化。
 
 ## 低功耗录音界面候选：0.3.0-dev.3-candidate.1（2026-09-26，待视觉确认）
 
