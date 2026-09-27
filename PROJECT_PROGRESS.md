@@ -1,6 +1,6 @@
 # SayIt Watch Transport project progress
 
-dev.16 低功耗界面：连接设置可配置切换秒数（默认 10、范围 1–180）；Galaxy Watch7 保留数据安装后已验 5 秒亮色与 12 秒黑底静态、设置重启持久化、取消返回 Ready。视觉与 A/B 原始数据在 `design/watch-ui/0.3.0-dev.3-candidate.2/`；258/258 单测、lint 0 error、Debug/Release 构建通过。初测渲染帧数 1815→632，165 秒电量计两组同为 3.692 mAh，续航差异仍需长期观察。用户要求此轮停止追加测量，转为更新 GitHub 与 README；发布状态以 `HANDOFF.md` 顶部为准。
+dev.16 低功耗界面：连接设置可配置切换秒数（默认 10、范围 1–180）；Galaxy Watch7 保留数据安装后已验 5 秒亮色与 12 秒黑底静态、设置重启持久化、取消返回 Ready。视觉与 A/B 原始数据在 `design/watch-ui/0.3.0-dev.3-candidate.2/`；258/258 单测、lint 0 error、Debug/Release 构建通过。初测渲染帧数 1815→632，165 秒电量计两组同为 3.692 mAh，续航差异仍需长期观察。用户要求停止追加测量。源码与 README 经 PR #8 合入公开 `main`（`e4e0b282`）；ZIP 与独立 APK 已发布为 GitHub Latest `v0.3.0-dev.16`，服务器 digest 与本地一致。完整哈希和遗留项见 `HANDOFF.md` 顶部。
 
 3 分钟上限真机验收：正式 dev.15 / Galaxy Watch7 连续录音在 180 秒上限自动停止，实际 WAV 为 179.88 秒、5,756,204 bytes、16 kHz/16-bit/mono PCM。峰值 -8.3 dBFS、整体 RMS -33.5 dBFS，没有满幅削波；按 -40 dB/0.5 秒口径的静音共 11.299 秒（6.28%）。新 History 为 `audioDurationSec=179.88`、`asrMs=6938`、`llmMs=465`、provider/model=`deepseek/deepseek-flash`，ASR/AI 文本不同且失败字段为空；手表回到 Ready 并保持 0° 锁定。长样本的录音→上传→ASR→AI→History 链路通过，音频和正文未提交。
 
