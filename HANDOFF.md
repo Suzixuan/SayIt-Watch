@@ -1,12 +1,22 @@
 # SayIt Watch Transport handoff
 
-## GitHub `main` 合并交接（2026-09-26）
+## Latest 快速安装测试包与 README（2026-09-26）
+
+- GitHub Release [`v0.3.0-dev.13`](https://github.com/Suzixuan/SayIt-Watch/releases/tag/v0.3.0-dev.13) 已发布为 **Latest**，标题为「SayIt Watch 0.3.0-dev.13 快速安装测试包」，不是 prerelease/draft。实现和安装文档已通过 merge `e7172bfdf8e515730749547dbe0c3c39b499c1d3` 进入公开仓库 `main`。
+- README 首屏新增「先安装：从下载到连上电脑」，从 Release 下载开始，依次说明电脑端一键配置、Wear OS 无线 ADB 配对/安装、同 Wi-Fi 验证和双电脑同 Token；不再要求读者先理解开发目录或手工拼接配置。
+- Release 提供两个资产：一体包 `SayIt-Watch-0.3.0-dev.13-windows-watch-bundle.zip`（25,068,287 bytes，SHA-256 `A5E269B6646FF0145DC8D7DE709A5D9D19D21F9428CBA8E1C313B1C5F136F154`）和单独 Watch APK `SayIt-Watch-0.3.0-dev.13.apk`（20,763,904 bytes，SHA-256 `174BAEC8F03A00FB215281473DC855DC77D63DFF3C7E7461F2F5714C2F1BA265`）；GitHub 服务器 digest 与本地一致。
+- 一体包含 `SayIt.exe`、dev.13/code 17 APK、`1-Setup-PC.cmd`、`2-Install-Watch.cmd`、对应 PowerShell 脚本、便携说明、构建信息和哈希清单。ZIP 34 个条目、33 条 payload 哈希全部复算一致，0 mismatch；没有 receiver 配置、Token、凭证、录音、模型或历史。
+- `1-Setup-PC.cmd` 只选择显式 RFC1918 地址，生成或保留 64 位十六进制 Token，并启动 SayIt；第二台电脑可输入第一台的同一 Token。`2-Install-Watch.cmd` 引导 `adb pair` / `adb connect` / `adb install -r`，首次安装时把同一 Token 写入 Debug Watch 应用，不在终端打印 Token。
+- 新鲜 Windows 原生重编译两次在 `transcribe-cpp-sys` 的 MSBuild FileTracker `FTK1011` 处失败；单路构建确认不是并发问题，短真实 target 又触发依赖联接的 `os error 267`。因 `git diff e33b536..facf76a -- client/src client/src-tauri` 为零，最终诚实复用已验收 R9 EXE（SHA-256 `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`），而非把它冒充本轮新编译。包内 `BUILD-INFO.txt` 分别记录 Windows EXE 提交 `e33b5361c3517f35d75bf210bfc1077d4f730658` 与组合包/Watch 提交 `facf76a8c7bf8853006ce4ea222e664c537208ec`。
+- PM 验证保留：Watch 全量 27 suites / 246 tests / 0 failures，lint 0 errors / 37 warnings，Debug APK build 成功；快捷脚本通过 Windows PowerShell 5.1 解析和隔离配置测试，打包说明静态门槛及 `ConnectionLifecycleR9Test` 11 条通过。该 Release 仍是受信任私人局域网的 Debug 测试包；正式安全 Release、双电脑各一条真实录音路由、十连测与真实转腕仍未关闭。
+
+## 上一轮 GitHub `main` 合并交接（2026-09-26）
 
 - 用户已明确授权把 `codex/watch-connection-r7` 合并到公开仓库 `Suzixuan/SayIt-Watch` 的 `main`。合并前公开 `main` 为 `969f1c9692f7569b6e196e1ab6b9d6106325492a`，功能与文档审核基线为 `b60d58cb920e6cb7f7f3bbf592049202d38d6d6e`；两侧共同内容基线为 `b9b8836319cce2ada13e4da190d26fe1a948bfda`，`main` 独有的两个提交仅为既有 PR 合并记录，文件树无额外变化，合并预测无内容冲突。
 - 本次进入 `main` 的产品范围是 Watch 前台恢复、双电脑候选增量发布、电脑选择器与实时在线列表、本地电脑别名和 dev.13 触控/圆屏安全区修复，以及对应冻结设计、真机证据、README 截图和 CHANGELOG。没有合并 APK/AAB、Token、录音、`.env`、`local.properties`、安装包或构建缓存。
 - 复用未变化源码的 PM 验证：27 suites / 246 tests / 0 failures / 0 errors / 0 skipped，lint 0 errors / 38 warnings，Debug build 成功；最终 APK SHA-256 `174BAEC8F03A00FB215281473DC855DC77D63DFF3C7E7461F2F5714C2F1BA265`。仓库交接检查扫描 19,968 个文件，0 failure；README 16 个本地引用，0 缺失。
 - 合并不改变未完成口径：三星 T9 真实昵称输入/保存/恢复仍待用户手动体验；R12-C 双向真实录音路由、R12-D 重复检查、R12-E 真实转腕观察仍未全部关闭；这次是源码与文档合并，不是 Release、tag 或正式部署。
-- 回滚边界：若合并后发现阻断问题，保留历史并对本次 GitHub merge commit 执行 `git revert -m 1 <merge-sha>`；不得 force-push 或改写公开 `main` 历史。实际 merge SHA 以 GitHub 合并后远端读回为准。
+- 回滚边界：若合并后发现阻断问题，保留历史并对该轮 GitHub merge commit `c0c5ffb49a3caee486a790680ab1e2bd097236f1` 执行 `git revert -m 1`；不得 force-push 或改写公开 `main` 历史。
 
 ## 自定义入口真机触控与安全区修复：1C-PM-UI-02@R5（2026-09-26，dev.13，部分真机通过）
 
