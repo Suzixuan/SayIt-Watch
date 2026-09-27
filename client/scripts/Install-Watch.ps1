@@ -70,7 +70,38 @@ if (-not $Device) {
 & $AdbPath -s $Device get-state | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "手表未连接：$Device" }
 
-Write-Host '正在安装 SayIt Watch（保留已有应用数据）……' -ForegroundColor Cyan
+function Invoke-AdbText {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+    $value = (& $AdbPath -s $Device @Arguments 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw "无法读取设备兼容信息：adb $($Arguments -join ' ')" }
+    return $value
+}
+
+# Generic Wear OS contract. Fail before installation instead of silently putting the APK on a
+# phone, an old Wear OS build, or a watch that cannot record/upload to the LAN receiver.
+$sdkText = Invoke-AdbText -Arguments @('shell', 'getprop', 'ro.build.version.sdk')
+$manufacturer = Invoke-AdbText -Arguments @('shell', 'getprop', 'ro.product.manufacturer')
+$model = Invoke-AdbText -Arguments @('shell', 'getprop', 'ro.product.model')
+$features = Invoke-AdbText -Arguments @('shell', 'pm', 'list', 'features')
+$featureLines = @($features -split "`r?`n" | ForEach-Object { $_.Trim() })
+
+$sdk = 0
+if (-not [int]::TryParse($sdkText, [ref]$sdk)) { throw "无法识别设备 Android API：$sdkText" }
+if ($sdk -lt 30) {
+    throw "设备 Android API 为 $sdk；SayIt 通用版要求 Wear OS 3+ / API 30+。"
+}
+if ($featureLines -notcontains 'feature:android.hardware.type.watch') {
+    throw '当前 ADB 设备不是 Android/Wear OS 手表，已停止安装。'
+}
+if ($featureLines -notcontains 'feature:android.hardware.microphone') {
+    throw '这台手表没有向应用公开麦克风，无法使用 SayIt，已停止安装。'
+}
+if ($featureLines -notcontains 'feature:android.hardware.wifi') {
+    throw '这台手表没有向应用公开 Wi-Fi，无法直连局域网 SayIt，已停止安装。'
+}
+
+Write-Host "兼容检查通过：$manufacturer $model（API $sdk，Watch / Microphone / Wi-Fi）" -ForegroundColor Green
+Write-Host '正在安装 SayIt for Wear OS（保留已有应用数据）……' -ForegroundColor Cyan
 & $AdbPath -s $Device install -r $apkPath
 if ($LASTEXITCODE -ne 0) { throw 'APK 安装失败。' }
 & $AdbPath -s $Device shell am force-stop $packageName | Out-Null

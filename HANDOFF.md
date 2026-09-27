@@ -1,5 +1,14 @@
 # SayIt Watch Transport handoff
 
+## 通用 Wear OS 3+ 单客户端兼容：dev.14（2026-09-26，源码/构建通过，跨品牌真机待验）
+
+- 用户将范围收窄为：排除 Apple Watch 与华为，不开发其他系统客户端；先让现有同一个客户端兼容不同品牌的 Wear OS 3+ 设备，其余系统只在 README 标为不兼容。新分支 `codex/wear-os-compat` 基于公开 `main` `08c8255`，没有改 Windows 接收器、协议、WAV、发现、Token、录音、双电脑选择、ASR、History 或 Paste。
+- Watch 升为 `0.3.0-dev.14` / code 18，最低 API 仍为 30。Manifest 新增 required `android.hardware.type.watch` 和 `android.hardware.wifi`，保留 required microphone，并明确 `com.google.android.wearable.standalone=true`；这与手表直接通过 Wi-Fi 连接电脑、无需手机伴侣的现有架构一致。
+- `2-Install-Watch.cmd` 对应 PowerShell 现在会在安装和写入 Token 前读取设备 API、form factor、麦克风和 Wi-Fi feature；普通 Android 手机、API 29 以下、无麦克风或无 Wi-Fi 的设备安全停止并说明原因。进程级 fake-adb 验证：普通手机退出非零且没有执行 `adb install`；合格 API 34 Watch fixture 退出 0 且执行安装。
+- README 改为通用 Wear OS 3+ 入口，并明确 Apple Watch、Huawei/HarmonyOS、Amazfit/Zepp OS、Garmin、旧 Samsung Tizen、Fitbit OS、封闭 RTOS 及缺少麦克风/Wi-Fi 的型号不兼容。Samsung/Pixel/Xiaomi/OnePlus/OPPO/Mobvoi 只指运行 Wear OS 3+ 且满足硬件契约的型号；当前不能把目标兼容范围写成已逐台真机验证。
+- PM 全量 `testDebugUnitTest` 为 28 suites / 252 tests / 0 failures / 0 errors / 0 skipped；`lintDebug` 为 0 errors / 38 warnings，`assembleDebug` 成功。APK 二进制读回 versionName `0.3.0-dev.14`、versionCode 18、minSdk 30、targetSdk 34，三项 required feature 与 standalone=true 均真实存在；APK SHA-256 `9ECE4EB9EF72F2EC91CEA6A732244B64EFBF210CB568E9443D3B531FBC274C67`。
+- **验收边界**：源码、安装拒绝/放行逻辑和 APK 构建通过；Galaxy Watch 7 的既有链路证据不因本轮失效。但尚无非 Samsung Wear OS 真机，因此 Pixel/Xiaomi/OnePlus/OPPO/TicWatch 等具体型号只能标为目标兼容，不能标为 VERIFIED。未获得新的 push、merge、tag 或 Release 授权，本轮先保留本地提交/产物。
+
 ## Latest 快速安装测试包与 README（2026-09-26）
 
 - GitHub Release [`v0.3.0-dev.13`](https://github.com/Suzixuan/SayIt-Watch/releases/tag/v0.3.0-dev.13) 已发布为 **Latest**，标题为「SayIt Watch 0.3.0-dev.13 快速安装测试包」，不是 prerelease/draft。实现和安装文档已通过 merge `e7172bfdf8e515730749547dbe0c3c39b499c1d3` 进入公开仓库 `main`。
