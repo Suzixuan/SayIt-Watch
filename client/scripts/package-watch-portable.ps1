@@ -2,7 +2,7 @@
 #
 # One ZIP, one entry point, both PCs. Produces:
 #
-#   SayIt-Watch-0.3.0-dev.2-windows-x64-portable.zip
+#   SayIt-Watch-0.3.0-dev.13-windows-watch-bundle.zip
 #
 # containing a Tauri **Debug** build whose frontend is EMBEDDED (`frontendDist`), so the
 # unpacked application starts on any Windows PC without this source tree, without Node,
@@ -43,7 +43,7 @@ $clientDir = Join-Path $repoRoot 'client'
 $tauriDir = Join-Path $clientDir 'src-tauri'
 if (-not $OutputDir) { $OutputDir = Join-Path $repoRoot 'dist-portable' }
 
-$packageBase = 'SayIt-Watch-0.3.0-dev.2-windows-x64-portable'
+$packageBase = 'SayIt-Watch-0.3.0-dev.13-windows-watch-bundle'
 $zipPath = Join-Path $OutputDir "$packageBase.zip"
 $stagingDir = Join-Path $OutputDir $packageBase
 
@@ -66,7 +66,19 @@ Package     : @PACKAGE@
 Built from  : committed product head @GIT_HEAD@
 Build type  : Tauri Debug build with the frontend EMBEDDED in the executable.
 Entry point : SayIt.exe  (same file on every PC — there is no per-PC package)
-Watch app   : 0.3.0-dev.2 (versionCode 6)
+Watch app   : 0.3.0-dev.13 (versionCode 17)
+
+Quick install
+-------------
+1. Extract the complete folder. Do not run the app from inside the ZIP.
+2. Double-click 1-Setup-PC.cmd. It selects an explicit private-LAN IPv4, creates or preserves
+   the local token, writes the receiver config and starts SayIt.
+3. Allow SayIt through Windows Firewall on Private networks only.
+4. Put Android SDK platform-tools beside this folder (or add adb.exe to PATH), then double-click
+   2-Install-Watch.cmd. It guides pairing, installs SayIt-Watch.apk and provisions the same token
+   on a first-time Watch install.
+5. Keep the PC and Watch on the same trusted Wi-Fi. Open Notepad, focus its input box, record on
+   the Watch and stop; the recognized text should appear in the focused input box.
 
 Why this is one package for every PC
 ------------------------------------
@@ -75,35 +87,25 @@ application starts on its own. It does NOT need this source tree, Node, npm, Vit
 localhost:1420/1421 frontend server. The Debug HTTP receiver and its DNS-SD advertisement are
 unchanged and remain debug-only.
 
-First run on a PC (read this once per computer)
------------------------------------------------
-1. Unpack this folder anywhere. A path with spaces or Chinese characters is fine.
-2. Run SayIt.exe.
-3. The watch receiver needs THIS computer's own connection configuration:
-       @RECEIVER_CONFIG@
-   Example (64-hex token; the field name is fixed):
-       {"bindIp":"0.0.0.0","port":18099,"devToken":"<this computer's watch token>"}
-   If that file is missing, the app shows a short notice naming this exact path — it will
-   not tell you to use the desktop Settings page, because that page configures a different
-   feature and cannot set this token.
-4. Bring the token over yourself, by a channel you trust (for example from the computer that
-   already works, using your own encrypted or otherwise private transfer). This package
-   never copies, generates or transmits a token, and no token is included in it.
-5. If the notice instead says the receive port could not be bound, some other program is
-   already using it. Close that program and start SayIt again; this app never ends another
-   process for you.
-6. The PC also needs its own ASR/provider configuration. None of it is copied between
-   computers by this package.
+Connection details
+------------------
+The receiver configuration stays at:
+    @RECEIVER_CONFIG@
+1-Setup-PC.cmd writes an explicit RFC1918 address; it never recommends wildcard binding. If a
+valid config already exists, it preserves the devToken field. For multiple PCs, you must bring the
+token over yourself through a channel you trust and use the same token on every PC to be discovered.
+The desktop still needs its own ASR/provider configuration; models and credentials are not copied.
 
 What this package does NOT contain
 ----------------------------------
 No configuration, no token or credential, no model file, no user history, no received audio,
 no source tree, no node_modules, no installer, and no release/auto-update channel.
 
-Unverified by the packager
---------------------------
-Real-device (Galaxy Watch) discovery, two-PC switching and recording-to-text were NOT
-verified by the packager of this ZIP. Those remain with the project owner.
+Current verification boundary
+-----------------------------
+Galaxy Watch 7 discovery, one real recording-to-text path, two-PC switching and the dev.13 picker
+interactions have device evidence. Multi-PC recording routes, repeated-run acceptance and a formal
+security Release remain incomplete. This is a Debug test bundle, not a production installer.
 '@
 
 <#
@@ -130,7 +132,7 @@ function New-PortableNotes {
         'entry=SayIt.exe',
         'build=debug',
         'frontend=embedded',
-        'watch=0.3.0-dev.2 (versionCode 6)',
+        'watch=0.3.0-dev.13 (versionCode 17)',
         "git_head=$GitHead",
         "receiver_config=$receiverConfigRelative",
         "SayIt.exe.sha256=$ExeHash"
@@ -171,7 +173,11 @@ function Test-PortableNotes {
         'frontendDist',
         'SayIt.exe',
         'watch-receiver.config.json',
-        'devToken'
+        'devToken',
+        '1-Setup-PC.cmd',
+        '2-Install-Watch.cmd',
+        'SayIt-Watch.apk',
+        'RFC1918'
     )) {
         if (-not $readmeText.Contains($required)) {
             Fail "README-PORTABLE.txt must mention $required"
@@ -180,6 +186,9 @@ function Test-PortableNotes {
     # The file must be valid UTF-8 (a garbled encoding would show up as a replacement character).
     if ($readmeText.Contains([char]0xFFFD)) {
         Fail 'README-PORTABLE.txt was not written as clean UTF-8'
+    }
+    if ($readmeText.Contains('"bindIp":"0.0.0.0"')) {
+        Fail 'README-PORTABLE.txt must not recommend wildcard binding'
     }
     foreach ($forbidden in @('SayIt 设置', '服务器访问令牌')) {
         if ($readmeText.Contains($forbidden)) {
@@ -251,6 +260,7 @@ if ($dirty -and $ProductCommit) {
 }
 
 $frontendDist = Join-Path $clientDir 'dist'
+$watchApkPath = Join-Path $repoRoot 'watch\app\build\outputs\apk\debug\app-debug.apk'
 
 # ── 1. Frontend: BUILD-TIME ONLY. The result is embedded in the EXE ────────────
 if (-not $SkipBuild) {
@@ -342,6 +352,22 @@ if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force }
 New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
 Copy-Item $exePath (Join-Path $stagingDir 'SayIt.exe') -Force
+
+if (-not (Test-Path -LiteralPath $watchApkPath)) {
+    Fail 'Watch Debug APK is missing. Build watch/app assembleDebug before packaging.'
+}
+Copy-Item $watchApkPath (Join-Path $stagingDir 'SayIt-Watch.apk') -Force
+
+foreach ($helper in @(
+    '1-Setup-PC.cmd',
+    '2-Install-Watch.cmd',
+    'Setup-PC.ps1',
+    'Install-Watch.ps1'
+)) {
+    $source = Join-Path $PSScriptRoot $helper
+    if (-not (Test-Path -LiteralPath $source)) { Fail "setup helper is missing: $helper" }
+    Copy-Item $source (Join-Path $stagingDir $helper) -Force
+}
 
 # Runtime libraries the app loads next to itself: the transcribe/ggml backend DLLs the
 # build staged, plus any MSVC runtime DLL the toolchain copied beside the EXE.

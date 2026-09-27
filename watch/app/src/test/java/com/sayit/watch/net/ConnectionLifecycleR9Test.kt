@@ -686,15 +686,25 @@ class ConnectionLifecycleR9Test {
         // The shipped notes are English. Assert in the language they are actually written in.
         assertTrue(
             "the notes must explain that the token is brought over by the user",
-            text.contains("Bring the token over yourself"),
+            text.contains("token over yourself", ignoreCase = true),
         )
         assertTrue(
             "the notes must name what the user has to put into the config file",
-            text.contains("watch token"),
+            text.contains("devToken"),
         )
         assertTrue(
             "the notes must still explain that the frontend is embedded",
             text.contains("frontendDist"),
+        )
+        assertTrue(
+            "the notes must name the two guided setup entries and the bundled APK",
+            text.contains("1-Setup-PC.cmd") &&
+                text.contains("2-Install-Watch.cmd") &&
+                text.contains("SayIt-Watch.apk"),
+        )
+        assertFalse(
+            "the notes must not recommend wildcard binding",
+            text.contains("\"bindIp\":\"0.0.0.0\""),
         )
         assertFalse(
             "the shipped notes must not point at a settings entry that does not exist",
@@ -735,6 +745,10 @@ class ConnectionLifecycleR9Test {
         assertTrue(
             "BUILD-INFO must name the real receiver config path",
             buildInfoText.contains("receiver_config=%LOCALAPPDATA%\\com.sayit.app\\watch-receiver.config.json"),
+        )
+        assertTrue(
+            "BUILD-INFO must identify the bundled Watch build",
+            buildInfoText.contains("watch=0.3.0-dev.13 (versionCode 17)"),
         )
     }
 

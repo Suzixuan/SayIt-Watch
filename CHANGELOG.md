@@ -9,6 +9,16 @@
 
 ---
 
+## Watch 快速安装包 — 2026-09-26（dev.13，Debug 测试包）
+
+- GitHub Release 改为同时提供 Windows 自包含客户端、Watch dev.13 APK 和快速安装入口，不再让旧 `v0.1.8-watchportable` 冒充当前功能版本。
+- 新增 `1-Setup-PC.cmd`：选择明确的 RFC1918 局域网 IPv4，生成或保留 64 位 Token，写入本机配置并启动 SayIt；不再要求用户手写 JSON，也不再推荐 `0.0.0.0`。
+- 新增 `2-Install-Watch.cmd`：引导 Wear OS 无线 ADB 配对、保留数据安装 APK，并在首次安装时把同一 Token 写入 Watch 应用私有配置。
+- README 将“下载 → 电脑端启动 → 手表安装 → 自动连接 → 记事本验证”移到最前面；源码构建和架构说明下移。
+- 仍是局域网 Debug 测试包：正式安全 Release、签名安装器、自动更新和完整重复运行验收尚未关闭。
+
+---
+
 ## Watch 开发快照 — 2026-09-26（dev.13，未发布）
 
 ### 新增
