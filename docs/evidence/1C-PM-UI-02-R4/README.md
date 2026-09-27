@@ -33,9 +33,12 @@ and no alias persistence. That contradicted the identity/customization direction
 
 ## Device boundary
 
-The Watch wireless-debugging mDNS service was absent after the build, so dev.12 is not installed
-or device-accepted. Real-device checks still required: glyph tap, row long-press, IME entry, save
-and immediate picker update, reset to fallback, and no accidental computer switch while editing.
+dev.12 was later installed through `192.168.12.126:40131` with data preserved and read back as
+code 16. Real-device evidence rejected this candidate: the row's parent gesture consumed the
+nested glyph tap, and the fixed close control covered the refresh action with two visible rows.
+`sayit-dev12-picker.png` (SHA-256
+`417DF615EA32078466DAE9BFFE1180DD61045D88854486C59C660169ADDFA10F`) preserves the rejected
+layout. The correction and accepted device evidence continue in `1C-PM-UI-02@R5` / dev.13.
 
 No Windows receiver, discovery/authentication contract, target verification, live presence loop,
 recording/upload, Provider, ASR, History, Paste, credentials, Release, push, merge, or tag changed.

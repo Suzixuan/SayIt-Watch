@@ -1,6 +1,8 @@
 # SayIt Watch Transport project progress
 
-当前 UI：`1C-PM-UI-02@R4` 已补回用户要求的电脑自定义入口，候选为 Watch dev.12/code 16。左侧电脑图标带铅笔角标，点图标或长按卡片进入全屏自定义，可保存本地名称或恢复默认；普通点卡片仍切换电脑。昵称只存 Watch 私有设置并按已认证 `IP:port` 隔离，不改发现/认证协议。27 suites / 246 tests / 0 failure，lint 0 error / 38 warnings，Debug build 通过，APK SHA-256 `CC7CF1DB890F446B82CCB507BAEF886F04BDBBCD78C6F69D35CE3F263978E282`。视觉/回滚候选为 `design/watch-ui/0.3.0-dev.2-candidate.6/`；手表无线调试仍离线，待装表和真机交互验收。权威状态见 `HANDOFF.md` 顶部与 `docs/evidence/1C-PM-UI-02-R4/`。
+当前 UI：`1C-PM-UI-02@R5` / Watch dev.13/code 17 已修复 dev.12 真机发现的触控竞争和底部覆盖：图标点按编辑、卡片正文点按切换、正文长按编辑，两个滚动页都避开固定底部关闭键。保留数据安装成功；两台电脑真机可见，`.142` 图标点按与 `.153` 长按分别进入正确自定义页，名称字段可打开编辑器，未误切当前 `.142`。三星 T9 的真实文字输入、保存后列表更新及恢复默认仍待用户手动体验。27 suites / 246 tests / 0 failure，lint 0 error / 38 warnings，Debug build 通过，最终 APK SHA-256 `174BAEC8F03A00FB215281473DC855DC77D63DFF3C7E7461F2F5714C2F1BA265`。冻结候选 `design/watch-ui/0.3.0-dev.2-candidate.7/`，证据见 `docs/evidence/1C-PM-UI-02-R5/`。
+
+上一版：`1C-PM-UI-02@R4` / dev.12 首次加入本地别名持久化和自定义页，自动化 246/246；但实机图标点击被整卡父手势抢走，且固定关闭键覆盖滚动内容，已否决并由 R5 取代。历史证据见 `docs/evidence/1C-PM-UI-02-R4/`。
 
 上一版：`1C-PM-UI-02@R3` / dev.11 完成选择器前台实时增删与底部居中关闭，243/243、lint/build 通过并已装表；但底部关闭触控与双机动态增删尚未完成真机验收，且没有电脑别名编辑入口。R4 仅补自定义入口和本地别名，不改变 R3 的在线刷新契约。历史证据见 `docs/evidence/1C-PM-UI-02-R3/`。
 

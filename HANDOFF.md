@@ -1,12 +1,20 @@
 # SayIt Watch Transport handoff
 
-## 电脑本地别名与自定义入口：1C-PM-UI-02@R4（2026-09-26，dev.12，待装表）
+## 自定义入口真机触控与安全区修复：1C-PM-UI-02@R5（2026-09-26，dev.13，部分真机通过）
+
+- dev.12 真机暴露两项核心偏差：整卡 `combinedClickable` 抢走嵌套图标点击，铅笔可见但点了不进入；滚动内容内部的底部 padding 没有缩小视口，两台电脑时关闭键覆盖“重新开始”，自定义页同样会覆盖名称卡片。candidate.6 保留为否决证据。
+- dev.13/code 17 把图标和卡片正文拆成独立触控区：图标点按编辑，正文点按切换，正文长按编辑；选择器与自定义页都让滚动视口真正结束在固定关闭键上方。冻结 `design/watch-ui/0.3.0-dev.2-candidate.7/`，manifest 0 failure。
+- 保留数据安装 Success，设备读回 dev.13/code 17。真机两台电脑同时可见；点 `.142` 图标进入 `.142` 自定义，长按 `.153` 正文进入 `.153` 自定义且当前仍为 `.142`；名称字段可打开编辑界面和三星输入法。选择器及自定义页关闭键均与内容分离。证据见 `docs/evidence/1C-PM-UI-02-R5/`。
+- 三星 T9 不接受本轮 ADB 文本注入，因此“手动输入真实昵称→保存后列表即时更新→恢复默认”留给用户手动体验，不写成已通过。一次冷启动连点误入录音后立即点可见“取消”，未点结束、未上传。
+- PM 最终全量 27 suites / 246 tests / 0 failures / 0 errors / 0 skipped，lint 0 errors / 38 warnings，Debug build 成功；最终 APK SHA-256 `174BAEC8F03A00FB215281473DC855DC77D63DFF3C7E7461F2F5714C2F1BA265`。无 push/merge/tag/Release；发现、认证、在线刷新、录音/上传及 Windows 均未改。
+
+## 电脑本地别名与自定义入口：1C-PM-UI-02@R4（2026-09-26，dev.12，真机否决）
 
 - 用户指出左侧电脑图标/长按卡片本应进入自定义界面并允许重命名，但 dev.11 没有该入口。源码核对确认图标只有绘制，卡片只有普通切换事件，`SettingsStore` 也没有昵称字段；不是入口隐藏，而是上一版确实漏做。
 - dev.12/code 16 在左侧图标增加铅笔角标和 40 dp 点击区；点图标或长按整张卡片进入全屏“自定义电脑”，普通点卡片仍只执行显式切换。可保存 1–16 字符名称或恢复 `电脑 · <IP末段>` 默认名。
 - 名称只写 Watch 应用私有 `SharedPreferences`，按已经认证的 `IP:port` 隔离；不进入 mDNS、Bearer 探针、上传、日志或 Windows 端。当前没有经过认证的稳定设备 ID，所以 DHCP 改址后不自动迁移旧昵称，避免错误套到另一台电脑。
 - 冻结视觉/回滚候选 `design/watch-ui/0.3.0-dev.2-candidate.6/`，父版 candidate.5 保持不变，manifest 复算 0 failure。PM 全量 `testDebugUnitTest --rerun-tasks lintDebug assembleDebug` 退出 0：27 suites / 246 tests / 0 failures / 0 errors / 0 skipped，lint 0 errors / 38 warnings，Debug APK SHA-256 `CC7CF1DB890F446B82CCB507BAEF886F04BDBBCD78C6F69D35CE3F263978E282`。
-- **真机待验**：构建完成时手表无线调试 mDNS 服务仍未出现，dev.12 尚未装表；图标点按、长按、输入法、保存后列表即时更新和恢复默认必须在 Galaxy Watch 上复验。证据见 `docs/evidence/1C-PM-UI-02-R4/`。无 push/merge/tag/Release；发现、认证、在线刷新、录音/上传及 Windows 均未改。
+- 后续通过 `192.168.12.126:40131` 保留数据安装并读回 dev.12/code 16；真机确认图标点击被父手势抢走，且两台条目时底部关闭键覆盖刷新按钮，因此 R4/candidate.6 否决并由 R5/dev.13 取代。否决截图见 `docs/evidence/1C-PM-UI-02-R4/`。
 
 ## 选择器实时在线列表与底部关闭：1C-PM-UI-02@R3（2026-09-26，dev.11，已装表/待交互验收）
 
