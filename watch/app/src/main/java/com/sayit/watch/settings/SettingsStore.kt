@@ -24,6 +24,14 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_TOKEN, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_TOKEN, value).apply()
 
+    var lowPowerAfterSeconds: Int
+        get() = LowPowerRecordingPolicy.sanitizeStored(
+            prefs.getInt(KEY_LOW_POWER_AFTER_SECONDS, LowPowerRecordingPolicy.DEFAULT_AFTER_SECONDS),
+        )
+        set(value) = prefs.edit()
+            .putInt(KEY_LOW_POWER_AFTER_SECONDS, LowPowerRecordingPolicy.sanitizeStored(value))
+            .apply()
+
     fun isValidDestination(): Boolean =
         DestinationValidator.validate(receiverIp, receiverPort) is DestinationValidator.ValidationResult.Valid
 
@@ -50,6 +58,7 @@ class SettingsStore(context: Context) {
         const val KEY_IP = "receiver_ip"
         const val KEY_PORT = "receiver_port"
         const val KEY_TOKEN = "dev_token"
+        const val KEY_LOW_POWER_AFTER_SECONDS = "low_power_after_seconds"
     }
 }
 

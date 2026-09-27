@@ -3,6 +3,7 @@
 ## 低功耗录音界面实施：0.3.0-dev.3-candidate.2（2026-09-26，开发中）
 
 - 用户将 candidate.1 的固定切换时间改为连接设置中的可配置秒数：默认 10 秒、有效范围 1–180 秒；短录音保持现有亮色动态界面，超过设置值才切到黑底静态波形，计时仍按 1 Hz 更新。正式修改前的 dev.15 源码、参考图、Watch7 截图和 165 秒电量基线已冻结到 `design/watch-ui/0.3.0-dev.3-baseline.1/`。基线在固定亮度 98、未播放媒体、取消丢弃录音的条件下为 198,232→195,108 µAh，即 3.124 mAh；History 保持 81 条。该单次读数受约 568 µAh 电量计数步长影响，只作同机 A/B 基线。正式产品源码尚未在本记录点修改。
+- Watch dev.16/code 20 源码已实现：`SettingsStore` 新增本地 `low_power_after_seconds`，连接设置提供数字输入和 1–180 校验；精确录音采样计数继续逐块更新，Compose 可见计数改为每个整秒最多发布一次；达到阈值后移除无限波形动画并切换黑底静态表盘，Stop/Cancel、保持亮屏、180 秒上限和上传链未改。30 suites / 258 tests / 0 failures，lint 0 errors / 38 warnings，Debug/Release build 通过；Debug APK 20,798,940 bytes，SHA-256 `963E56BFB4DB7F4703AA04C8644A0FFFF8C64025F9B8EEA50A0C39AE48D67FE4`。无线 ADB 首次安装因文件传输协议错误失败，设备仍为 dev.15；真机 UI、设置持久化和新版同条件电量 A/B 尚待完成。
 
 ## 低功耗录音界面候选：0.3.0-dev.3-candidate.1（2026-09-26，待视觉确认）
 
