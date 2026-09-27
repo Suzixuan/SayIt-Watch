@@ -26,8 +26,11 @@ param(
     # Output directory for the ZIP (gitignored). Defaults to <repo>/dist-portable.
     [string]$OutputDir,
     # Explicit product commit to record in BUILD-INFO. Defaults to the current HEAD, which is
-    # the product commit when the worktree is clean (the normal case).
+    # the bundle/Watch commit when the worktree is clean (the normal case).
     [string]$ProductCommit,
+    # Commit that produced SayIt.exe. Normally this is the bundle commit. Supply an older commit
+    # only with -SkipBuild after independently proving the desktop runtime sources are unchanged.
+    [string]$WindowsBinaryCommit,
     # 1C-D-04@R9: generate ONLY the notes a real package would ship (README-PORTABLE.txt +
     # BUILD-INFO.txt) into -OutputDir, run the same static checks on them, and stop. It performs
     # no build, copies nothing and writes no ZIP, so a test can assert on the REAL generated
@@ -63,7 +66,8 @@ SayIt Watch Transport — unified Windows Debug test package
 =========================================================
 
 Package     : @PACKAGE@
-Built from  : committed product head @GIT_HEAD@
+Bundle/Watch: committed product head @GIT_HEAD@
+Windows EXE : committed desktop-runtime head @WINDOWS_BINARY_COMMIT@
 Build type  : Tauri Debug build with the frontend EMBEDDED in the executable.
 Entry point : SayIt.exe  (same file on every PC — there is no per-PC package)
 Watch app   : 0.3.0-dev.13 (versionCode 17)
@@ -117,11 +121,13 @@ function New-PortableNotes {
     param(
         [Parameter(Mandatory)][string]$Directory,
         [Parameter(Mandatory)][string]$ExeHash,
-        [Parameter(Mandatory)][string]$GitHead
+        [Parameter(Mandatory)][string]$GitHead,
+        [Parameter(Mandatory)][string]$WindowsBinaryGitHead
     )
     $text = $buildInfoTemplate.
         Replace('@PACKAGE@', $packageBase).
         Replace('@GIT_HEAD@', $GitHead).
+        Replace('@WINDOWS_BINARY_COMMIT@', $WindowsBinaryGitHead).
         Replace('@RECEIVER_CONFIG@', $receiverConfigRelative)
     [System.IO.File]::WriteAllText((Join-Path $Directory 'README-PORTABLE.txt'), $text, $utf8NoBom)
 
@@ -134,6 +140,9 @@ function New-PortableNotes {
         'frontend=embedded',
         'watch=0.3.0-dev.13 (versionCode 17)',
         "git_head=$GitHead",
+        "bundle_git_head=$GitHead",
+        "watch_git_head=$GitHead",
+        "windows_exe_git_head=$WindowsBinaryGitHead",
         "receiver_config=$receiverConfigRelative",
         "SayIt.exe.sha256=$ExeHash"
     )
@@ -152,7 +161,8 @@ function New-PortableNotes {
 function Test-PortableNotes {
     param(
         [Parameter(Mandatory)][string]$Directory,
-        [Parameter(Mandatory)][string]$GitHead
+        [Parameter(Mandatory)][string]$GitHead,
+        [Parameter(Mandatory)][string]$WindowsBinaryGitHead
     )
     foreach ($noteName in @('README-PORTABLE.txt', 'BUILD-INFO.txt')) {
         $notePath = Join-Path $Directory $noteName
@@ -199,6 +209,9 @@ function Test-PortableNotes {
     if (-not $buildInfoText.Contains("git_head=$GitHead")) {
         Fail 'BUILD-INFO.txt must record the product commit it was built from'
     }
+    if (-not $buildInfoText.Contains("windows_exe_git_head=$WindowsBinaryGitHead")) {
+        Fail 'BUILD-INFO.txt must record the commit that produced SayIt.exe'
+    }
     if (-not $buildInfoText.Contains('frontend=embedded')) {
         Fail 'BUILD-INFO.txt must record that the frontend is embedded'
     }
@@ -212,23 +225,33 @@ if (-not (Test-Path (Join-Path $tauriDir 'tauri.conf.json'))) {
 # The recorded product commit must be traceable. 1C-D-04@R8 P1: the package must be built from a
 # CLEAN, COMMITTED product head, so `git rev-parse HEAD` really is the product commit and a dirty
 # tree (uncommitted product source) can never be shipped under a hash that does not describe it.
-function Get-GitValue([string[]]$arguments) {
+function Invoke-GitValue([string[]]$arguments) {
     try {
-        $value = (& git -C $repoRoot @arguments 2>$null | Out-String).Trim()
-        if ($value) { return $value }
+        $output = & git -C $repoRoot @arguments 2>$null
+        $exitCode = $LASTEXITCODE
+        if ($exitCode -eq 0) {
+            return [PSCustomObject]@{
+                Success = $true
+                Value = (($output | Out-String).Trim())
+            }
+        }
     } catch { }
-    return $null
+    return [PSCustomObject]@{ Success = $false; Value = $null }
 }
 
-$gitStatus = Get-GitValue @('status', '--porcelain')
-if ($null -eq $gitStatus) {
+$gitStatusResult = Invoke-GitValue @('status', '--porcelain')
+if (-not $gitStatusResult.Success) {
     Write-Host '   note: git is unavailable; the product commit cannot be verified' -ForegroundColor Yellow
     $dirty = $false
+    $gitStatus = ''
 } else {
+    $gitStatus = $gitStatusResult.Value
     $dirty = $gitStatus.Length -gt 0
 }
-$baselineCommit = if ($ProductCommit) { $ProductCommit } else { Get-GitValue @('rev-parse', 'HEAD') }
+$headResult = Invoke-GitValue @('rev-parse', 'HEAD')
+$baselineCommit = if ($ProductCommit) { $ProductCommit } elseif ($headResult.Success) { $headResult.Value } else { $null }
 if (-not $baselineCommit) { $baselineCommit = 'unknown' }
+$windowsCommit = if ($WindowsBinaryCommit) { $WindowsBinaryCommit } else { $baselineCommit }
 
 # ── 1C-D-04@R9: -NotesOnly — generate the REAL notes and stop ─────────────────
 # The unit tests must assert on the notes a package would really ship, not on a copy of the
@@ -240,8 +263,8 @@ if ($NotesOnly) {
     $notesDir = if ($OutputDir) { $OutputDir } else { Join-Path $repoRoot 'dist-portable\notes-preview' }
     if (-not (Test-Path $notesDir)) { New-Item -ItemType Directory -Path $notesDir -Force | Out-Null }
     Write-Step "Generating the shipped notes only (no build, no ZIP) into $notesDir"
-    New-PortableNotes -Directory $notesDir -ExeHash 'not-built' -GitHead $baselineCommit
-    Test-PortableNotes -Directory $notesDir -GitHead $baselineCommit
+    New-PortableNotes -Directory $notesDir -ExeHash 'not-built' -GitHead $baselineCommit -WindowsBinaryGitHead $windowsCommit
+    Test-PortableNotes -Directory $notesDir -GitHead $baselineCommit -WindowsBinaryGitHead $windowsCommit
     Write-Host "NOTES-README=$notesDir\README-PORTABLE.txt"
     Write-Host "NOTES-BUILDINFO=$notesDir\BUILD-INFO.txt"
     Write-Host 'Notes-only run complete' -ForegroundColor Green
@@ -397,7 +420,7 @@ $exeHash = (Get-FileHash (Join-Path $stagingDir 'SayIt.exe') -Algorithm SHA256).
 
 # 1C-D-04@R9: the shipped notes come from the ONE template inside New-PortableNotes, so a real
 # package and the -NotesOnly gate the unit tests run can never drift apart.
-New-PortableNotes -Directory $stagingDir -ExeHash $exeHash -GitHead $baselineCommit
+New-PortableNotes -Directory $stagingDir -ExeHash $exeHash -GitHead $baselineCommit -WindowsBinaryGitHead $windowsCommit
 
 # ── 5. SHA256SUMS over the payload (not over itself) ──────────────────────────
 Write-Step 'Computing SHA256SUMS'
@@ -416,7 +439,7 @@ $lines = foreach ($file in $payload) {
 # control character while the package was generated. The SAME gate runs in -NotesOnly mode, so
 # it cannot be satisfied by wording that was never generated.
 Write-Step 'Checking the generated notes (text, path, no control characters)'
-Test-PortableNotes -Directory $stagingDir -GitHead $baselineCommit
+Test-PortableNotes -Directory $stagingDir -GitHead $baselineCommit -WindowsBinaryGitHead $windowsCommit
 
 # ── 6. ZIP ────────────────────────────────────────────────────────────────────
 Write-Step "Creating $zipPath"
