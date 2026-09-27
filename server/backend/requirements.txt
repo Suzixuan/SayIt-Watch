@@ -1,7 +1,7 @@
 fastapi==0.135.2
 # multipart 上传（诊断包、ASR 纠错样本）依赖它。缺了不是接口 404，是 FastAPI
 # 在路由注册期就抛 RuntimeError —— 整个后端起不来，所以必须显式 pin。
-python-multipart==0.0.22
+python-multipart==0.0.31
 uvicorn==0.42.0
 websockets==16.0
 python-dotenv==1.2.2
