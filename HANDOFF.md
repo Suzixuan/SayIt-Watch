@@ -1,5 +1,14 @@
 # SayIt Watch Transport handoff
 
+## Watch 录音 AI 整理修复：dev.15（2026-09-26，真实 Provider 调用通过）
+
+- 根因已确认：Delivery 1B 在 `RecorderOrchestrator.beginExternalRun` 和外部录音 finalize 中硬编码 `disableAi: true`，所以原版与通用 Wear OS 版的 Watch 录音都会绕过 AI；这不是 dev.14 新引入的问题。用户于 2026-09-26 明确纠正该产品行为，旧任务文件保留为历史，但 Provider Contract 已标记该 AI-off 条款被取代。
+- 提交 `9d93a104ce4a64d21e420e7f71f6fb3816aed55e` 让 Watch 外部录音与电脑麦克风共用现有 `aiEnabled`、提示词预设/应用规则、热词、语言、上下文感知写作隐私边界和 `aiMinDurationSec`。AI 关闭分支仍传 `disableAi: true` 且不传系统提示词；不会改写用户设置。
+- 回归：Windows 前端 31 test files / 371 tests / 0 failures，`tsc && vite build` 通过；Watch 28 suites / 253 tests / 0 failures / 0 errors / 0 skipped，`lintDebug` 0 errors，`assembleDebug` 通过。APK 读回 versionName `0.3.0-dev.15`、versionCode 19、minSdk 30、targetSdk 34，并保留 Watch/麦克风/Wi-Fi required features。
+- 真实链路：新编译 EXE 接收并重放前一条真实 Watch WAV，HTTP 返回 201 后新增 History；`asr_text != llm_text`，`llm_ms=568`，AI provider/model 为 `deepseek/deepseek-v4-flash`。这证明 Watch 外部入口真实执行了 AI，而不只是 StartOptions 单测通过。未提交音频或转写内容；证据摘要在 `docs/evidence/watch-ai-parity-dev15/README.md`。
+- 新包不覆盖 dev.14：`dist-portable/SayIt-Watch-0.3.0-dev.15-windows-wear-os-bundle.zip` 为 25,069,276 bytes，SHA-256 `437F4BDEC4DD21DD8802E83FB9E535B1860FB7FBD97FE9F416B18BB26C24E1CB`；独立 APK 为 20,763,996 bytes，SHA-256 `DECCC3914ED98E4575D8EB0EE4CBD88B92A4449B536705FE36551BDEF4FE2F99`；包内新 EXE SHA-256 `664565E7ECCCE49A0E5818C9E827502BDA5FD2A635FD9D4139DFC50F33794959`。ZIP 34 个条目、33 条内部哈希全部复算一致；仅含两个既有测试 WAV，无接收录音、配置、Token、凭证、keystore 或 AAB。隔离解压启动通过，接收端口监听正常，当前本机运行的是 dev.15 暂存目录内的新 EXE。
+- 未解决/边界：Watch APK 本轮除版本号外无行为变化，AI 修复位于 Windows 入口，因此没有覆盖原 dev.13 Watch，也未重复安装 sidecar。当前这台电脑继承的旧接收配置仍绑定 `0.0.0.0:18099`；新安装脚本会写显式 RFC1918 地址，但本轮没有擅自改用户现有配置。尚未 push、merge、tag 或发布 GitHub Release。
+
 ## 通用 Wear OS 3+ 单客户端兼容：dev.14（2026-09-26，Watch7 并排真机通过，跨品牌真机待验）
 
 - 用户将范围收窄为：排除 Apple Watch 与华为，不开发其他系统客户端；先让现有同一个客户端兼容不同品牌的 Wear OS 3+ 设备，其余系统只在 README 标为不兼容。新分支 `codex/wear-os-compat` 基于公开 `main` `08c8255`，没有改 Windows 接收器、协议、WAV、发现、Token、录音、双电脑选择、ASR、History 或 Paste。
