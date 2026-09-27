@@ -748,7 +748,7 @@ class ConnectionLifecycleR9Test {
         )
         assertTrue(
             "BUILD-INFO must identify the bundled Watch build",
-            buildInfoText.contains("watch=0.3.0-dev.14 (versionCode 18)"),
+            buildInfoText.contains("watch=0.3.0-dev.15 (versionCode 19)"),
         )
     }
 

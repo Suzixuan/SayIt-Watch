@@ -4,7 +4,7 @@ Status: PM-reviewed UI direction. Reference only; this document does not unlock 
 
 ## Product boundary
 
-This is a **Wear OS app**, not a watch face. The Watch only records a whole WAV and uploads it. Existing SayIt on Windows performs ASR, History, and Paste. AI cleanup is disabled for Delivery 1B.
+This is a **Wear OS app**, not a watch face. The Watch only records a whole WAV and uploads it. Existing SayIt on Windows performs ASR, AI cleanup, History, and Paste. The historical Delivery 1B AI-off rule was superseded by the user's 2026-09-26 correction: Watch recordings now follow the existing desktop AI switch and prompt routing.
 
 The runtime flow is:
 

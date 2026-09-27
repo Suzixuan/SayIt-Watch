@@ -18,9 +18,9 @@ android {
         // R11: distinguish the switch-cancel status repair during device acceptance.
         // R12-A: distinguish the foreground-revalidation Ready projection repair.
         // R12-B: stream authenticated switch candidates before the browse window closes.
-        // dev.14: generic Wear OS 3+ compatibility contract (watch + microphone + Wi-Fi).
-        versionCode = 18
-        versionName = "0.3.0-dev.14"
+        // dev.15: generic Wear OS 3+ build paired with desktop Watch-AI parity.
+        versionCode = 19
+        versionName = "0.3.0-dev.15"
         minSdk = 30
         targetSdk = 34
     }

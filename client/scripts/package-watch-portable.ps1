@@ -2,7 +2,7 @@
 #
 # One ZIP, one entry point, both PCs. Produces:
 #
-#   SayIt-Watch-0.3.0-dev.14-windows-wear-os-bundle.zip
+#   SayIt-Watch-0.3.0-dev.15-windows-wear-os-bundle.zip
 #
 # containing a Tauri **Debug** build whose frontend is EMBEDDED (`frontendDist`), so the
 # unpacked application starts on any Windows PC without this source tree, without Node,
@@ -46,7 +46,7 @@ $clientDir = Join-Path $repoRoot 'client'
 $tauriDir = Join-Path $clientDir 'src-tauri'
 if (-not $OutputDir) { $OutputDir = Join-Path $repoRoot 'dist-portable' }
 
-$packageBase = 'SayIt-Watch-0.3.0-dev.14-windows-wear-os-bundle'
+$packageBase = 'SayIt-Watch-0.3.0-dev.15-windows-wear-os-bundle'
 $zipPath = Join-Path $OutputDir "$packageBase.zip"
 $stagingDir = Join-Path $OutputDir $packageBase
 
@@ -70,7 +70,7 @@ Bundle/Watch: committed product head @GIT_HEAD@
 Windows EXE : committed desktop-runtime head @WINDOWS_BINARY_COMMIT@
 Build type  : Tauri Debug build with the frontend EMBEDDED in the executable.
 Entry point : SayIt.exe  (same file on every PC — there is no per-PC package)
-Watch app   : 0.3.0-dev.14 (versionCode 18), generic Wear OS 3+ compatibility contract
+Watch app   : 0.3.0-dev.15 (versionCode 19), generic Wear OS 3+ compatibility contract
 
 Quick install
 -------------
@@ -108,7 +108,7 @@ no source tree, no node_modules, no installer, and no release/auto-update channe
 Current verification boundary
 -----------------------------
 Galaxy Watch 7 discovery, one real recording-to-text path, two-PC switching and the dev.13 picker
-interactions have device evidence. The dev.14 generic compatibility contract is source/build
+interactions have device evidence. The dev.15 generic compatibility contract is source/build
 verified but still needs a non-Samsung Wear OS device run. Multi-PC recording routes,
 repeated-run acceptance and a formal security Release remain incomplete. This is a Debug test
 bundle, not a production installer.
@@ -140,7 +140,7 @@ function New-PortableNotes {
         'entry=SayIt.exe',
         'build=debug',
         'frontend=embedded',
-        'watch=0.3.0-dev.14 (versionCode 18)',
+        'watch=0.3.0-dev.15 (versionCode 19)',
         "git_head=$GitHead",
         "bundle_git_head=$GitHead",
         "watch_git_head=$GitHead",

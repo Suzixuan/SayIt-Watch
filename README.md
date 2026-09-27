@@ -8,7 +8,7 @@
 
 Wear OS 3+ 手表负责录音和选择电脑；Windows SayIt 继续负责语音识别、AI 整理、History 与文字插入。
 
-当前开发快照：**Watch 0.3.0-dev.14 / code 18**
+当前开发快照：**SayIt Watch 0.3.0-dev.15 / code 19**
 
 </div>
 
@@ -16,8 +16,8 @@ Wear OS 3+ 手表负责录音和选择电脑；Windows SayIt 继续负责语音�
 
 不需要下载源码，也不需要 Android Studio。先从 [GitHub 最新版本](https://github.com/Suzixuan/SayIt-Watch/releases/latest) 下载：
 
-- `SayIt-Watch-0.3.0-dev.14-windows-wear-os-bundle.zip`：推荐，里面同时有 Windows SayIt、Wear OS APK 和两个安装入口；
-- `SayIt-Watch-0.3.0-dev.14.apk`：只想更新手表时使用。
+- `SayIt-Watch-0.3.0-dev.15-windows-wear-os-bundle.zip`：推荐，里面同时有 Windows SayIt、Wear OS APK 和两个安装入口；
+- `SayIt-Watch-0.3.0-dev.15.apk`：只想更新手表时使用。
 
 > 这是可信局域网内使用的 **Debug 测试包**，不是正式安全 Release。不要在公共 Wi-Fi 使用，也不要把 Token 发给别人。
 
@@ -94,7 +94,7 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 
 手表只确认录音已交给电脑，不会把“上传成功”伪装成“文字已经插入”。**目标输入框里真正出现文字，完整链路才算成功。**
 
-## 从最初版本到 dev.14
+## 从最初版本到 dev.15
 
 ### 1. 手表录音与完整音频传输
 
@@ -147,6 +147,12 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 - 安装脚本在写入应用或 Token 前完成设备能力检查，连接到普通 Android 手机、旧系统或缺少麦克风/Wi-Fi 的手表时安全停止。
 - 客户端不依赖 Samsung SDK；同一 APK 用于不同品牌的 Wear OS 设备。Galaxy Watch 7 仍是当前真机证据，不代表其他品牌已经逐台验收。
 
+### 8. 手表录音也经过 AI 整理
+
+- 手表上传的录音与电脑麦克风录音共用同一套 `AI 整理` 开关，不再被外部入口强制关闭。
+- AI 开启时，沿用当前提示词预设、应用规则、热词、语言和最短整理时长；启用上下文感知写作时，也使用同一隐私边界读取目标输入框上下文。
+- AI 关闭时仍只做语音识别，不会暗中调用 AI，也不会改写用户保存的设置。
+
 ## 当前界面
 
 <div align="center">
@@ -178,8 +184,9 @@ Wear OS 手表 → 同一可信 Wi-Fi → Windows SayIt
 - dev.13 真机图标点按进入当前电脑自定义页。
 - dev.13 真机长按另一台电脑进入正确自定义页，且不会误切当前目标。
 - 名称字段能打开编辑界面与三星输入法；列表和自定义页的底部关闭键不遮挡内容。
-- 自动化：27 suites / 246 tests / 0 failures / 0 errors；lint 0 error。
-- dev.14 Manifest 与安装脚本的通用 Wear OS 3+ 能力门槛已通过源码和构建验证。
+- Watch 自动化：28 suites / 253 tests / 0 failures / 0 errors；lint 0 error。
+- Windows 前端自动化：31 test files / 371 tests / 0 failures；TypeScript/Vite 构建通过。
+- dev.15 Manifest 与安装脚本的通用 Wear OS 3+ 能力门槛已通过源码和构建验证；Watch 外部录音的 AI 开关与提示词路由已有回归测试。
 
 仍待完成：
 
