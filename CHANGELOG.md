@@ -14,6 +14,8 @@
 - 同一个 APK 面向 Wear OS 3+ / API 30+，不增加品牌专属客户端，也不引入 Samsung SDK。
 - Manifest 明确要求手表设备、麦克风和 Wi-Fi，避免把不能完成录音或局域网上传的设备列为兼容。
 - `2-Install-Watch.cmd` 在安装和写入 Token 前检查 API 版本、Watch form factor、麦克风与 Wi-Fi；普通 Android 手机、旧系统或缺少必要硬件时给出具体原因并停止。
+- 真机并排验收使用独立包名 `com.sayit.watch.universaltest`，保留手表上的 dev.13 不升级覆盖；Galaxy Watch7 完成连接、2 秒录音和 Windows 接收端 WAV 落盘。
+- 真机验收发现快速安装脚本使用 camelCase 配置字段、而 Windows 接收器正式契约使用 `bind_ip/dev_token`。`1-Setup-PC.cmd` 现在兼容读取旧字段但统一写回正式 snake_case，`2-Install-Watch.cmd` 优先读取 `dev_token`，并增加进程级回归测试。
 - README 新增兼容/不兼容列表：目标覆盖不同品牌的 Wear OS 3+ 型号；Apple Watch、华为/HarmonyOS、Zepp OS、Garmin、Tizen、Fitbit OS 与封闭 RTOS 设备不在当前客户端范围。
 - 现有录音、WAV、DNS-SD/mDNS、Bearer Token、双电脑选择、Windows ASR/History/Paste 链路不变。当前完整真机证据仍只有 Galaxy Watch 7，非 Samsung Wear OS 真机尚待验收。
 

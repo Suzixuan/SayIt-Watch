@@ -30,7 +30,11 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -Raw -LiteralPath $ConfigPath | ConvertFrom-Json
-$token = "$($config.devToken)".Trim().ToLowerInvariant()
+$token = if ("$($config.dev_token)" -match '^[0-9A-Fa-f]{64}$') {
+    "$($config.dev_token)".Trim().ToLowerInvariant()
+} else {
+    "$($config.devToken)".Trim().ToLowerInvariant()
+}
 if ($token -notmatch '^[0-9a-f]{64}$') { throw '电脑端 Token 无效，请先重新运行 1-Setup-PC.cmd。' }
 
 function Get-ConnectedDevices {

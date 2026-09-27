@@ -96,7 +96,7 @@ Connection details
 The receiver configuration stays at:
     @RECEIVER_CONFIG@
 1-Setup-PC.cmd writes an explicit RFC1918 address; it never recommends wildcard binding. If a
-valid config already exists, it preserves the devToken field. For multiple PCs, you must bring the
+valid config already exists, it preserves the dev_token field. For multiple PCs, you must bring the
 token over yourself through a channel you trust and use the same token on every PC to be discovered.
 The desktop still needs its own ASR/provider configuration; models and credentials are not copied.
 
@@ -185,7 +185,7 @@ function Test-PortableNotes {
         'frontendDist',
         'SayIt.exe',
         'watch-receiver.config.json',
-        'devToken',
+        'dev_token',
         '1-Setup-PC.cmd',
         '2-Install-Watch.cmd',
         'SayIt-Watch.apk',
@@ -203,7 +203,7 @@ function Test-PortableNotes {
     if ($readmeText.Contains([char]0xFFFD)) {
         Fail 'README-PORTABLE.txt was not written as clean UTF-8'
     }
-    if ($readmeText.Contains('"bindIp":"0.0.0.0"')) {
+    if ($readmeText.Contains('"bind_ip":"0.0.0.0"')) {
         Fail 'README-PORTABLE.txt must not recommend wildcard binding'
     }
     foreach ($forbidden in @('SayIt 设置', '服务器访问令牌')) {

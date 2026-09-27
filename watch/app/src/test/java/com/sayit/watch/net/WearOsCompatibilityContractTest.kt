@@ -102,6 +102,38 @@ class WearOsCompatibilityContractTest {
         assertTrue("compatible fixture must run adb install", result.adbLog.contains(" install -r "))
     }
 
+    @Test
+    fun setupPreservesReceiverSnakeCaseContract() {
+        val fixture = temporaryFolder.newFolder("setup-config")
+        val sourceSetup = File("../../client/scripts/Setup-PC.ps1").absoluteFile
+        val setup = File(fixture, "Setup-PC.ps1")
+        sourceSetup.copyTo(setup)
+        val token = "b".repeat(64)
+        val config = File(fixture, "watch-receiver.config.json")
+        config.writeText("""{"bind_ip":"192.168.12.9","port":18099,"dev_token":"$token"}""")
+
+        val process = ProcessBuilder(
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", setup.absolutePath,
+            "-NoClipboard",
+            "-BindIp", "192.168.12.10",
+            "-ConfigPath", config.absolutePath,
+        ).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val finished = process.waitFor(30, TimeUnit.SECONDS)
+        if (!finished) process.destroyForcibly()
+        assertTrue("setup fixture must finish:\n$output", finished)
+        assertEquals("setup must accept the receiver's snake_case config:\n$output", 0, process.exitValue())
+
+        val rewritten = config.readText()
+        assertTrue("setup must write bind_ip", rewritten.contains("\"bind_ip\":\"192.168.12.10\""))
+        assertTrue("setup must preserve dev_token", rewritten.contains("\"dev_token\":\"$token\""))
+        assertFalse("setup must not emit legacy bindIp", rewritten.contains("\"bindIp\""))
+        assertFalse("setup must not emit legacy devToken", rewritten.contains("\"devToken\""))
+    }
+
     private data class InstallerResult(val exitCode: Int, val output: String, val adbLog: String)
 
     private fun runInstallerWithFakeDevice(isWatch: Boolean): InstallerResult {
@@ -111,7 +143,7 @@ class WearOsCompatibilityContractTest {
         sourceInstaller.copyTo(installer)
         File(fixture, "SayIt-Watch.apk").writeBytes(byteArrayOf(0x53, 0x41, 0x59))
         val config = File(fixture, "watch-receiver.config.json")
-        config.writeText("""{"devToken":"${"a".repeat(64)}"}""")
+        config.writeText("""{"dev_token":"${"a".repeat(64)}"}""")
         val adbLog = File(fixture, "adb.log")
         val fakeAdb = File(fixture, "adb.cmd")
         val watchFeature = if (isWatch) "echo feature:android.hardware.type.watch" else "rem phone fixture"
