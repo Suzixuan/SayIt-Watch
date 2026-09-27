@@ -1,14 +1,16 @@
 # SayIt Watch Transport handoff
 
-## 通用 Wear OS 3+ 单客户端兼容：dev.14（2026-09-26，源码/构建通过，跨品牌真机待验）
+## 通用 Wear OS 3+ 单客户端兼容：dev.14（2026-09-26，Watch7 并排真机通过，跨品牌真机待验）
 
 - 用户将范围收窄为：排除 Apple Watch 与华为，不开发其他系统客户端；先让现有同一个客户端兼容不同品牌的 Wear OS 3+ 设备，其余系统只在 README 标为不兼容。新分支 `codex/wear-os-compat` 基于公开 `main` `08c8255`，没有改 Windows 接收器、协议、WAV、发现、Token、录音、双电脑选择、ASR、History 或 Paste。
 - Watch 升为 `0.3.0-dev.14` / code 18，最低 API 仍为 30。Manifest 新增 required `android.hardware.type.watch` 和 `android.hardware.wifi`，保留 required microphone，并明确 `com.google.android.wearable.standalone=true`；这与手表直接通过 Wi-Fi 连接电脑、无需手机伴侣的现有架构一致。
 - `2-Install-Watch.cmd` 对应 PowerShell 现在会在安装和写入 Token 前读取设备 API、form factor、麦克风和 Wi-Fi feature；普通 Android 手机、API 29 以下、无麦克风或无 Wi-Fi 的设备安全停止并说明原因。进程级 fake-adb 验证：普通手机退出非零且没有执行 `adb install`；合格 API 34 Watch fixture 退出 0 且执行安装。
+- Watch7 真机验收发现快速安装脚本原先使用 camelCase `bindIp/devToken`，与 Windows 接收器实际 `bind_ip/dev_token` 契约不一致。现已修复：`Setup-PC.ps1` 兼容读取旧字段但统一写回 snake_case，`Install-Watch.ps1` 优先读取正式 `dev_token`；新增进程级测试验证真实格式不会被破坏。
 - README 改为通用 Wear OS 3+ 入口，并明确 Apple Watch、Huawei/HarmonyOS、Amazfit/Zepp OS、Garmin、旧 Samsung Tizen、Fitbit OS、封闭 RTOS 及缺少麦克风/Wi-Fi 的型号不兼容。Samsung/Pixel/Xiaomi/OnePlus/OPPO/Mobvoi 只指运行 Wear OS 3+ 且满足硬件契约的型号；当前不能把目标兼容范围写成已逐台真机验证。
-- PM 全量 `testDebugUnitTest` 为 28 suites / 252 tests / 0 failures / 0 errors / 0 skipped；`lintDebug` 为 0 errors / 38 warnings，`assembleDebug` 成功。APK 二进制读回 versionName `0.3.0-dev.14`、versionCode 18、minSdk 30、targetSdk 34，三项 required feature 与 standalone=true 均真实存在；APK SHA-256 `9ECE4EB9EF72F2EC91CEA6A732244B64EFBF210CB568E9443D3B531FBC274C67`。
-- 本地实现提交为 `48903455eadcbb6098f6964fc9780ccb03110efb`。统一测试包 `dist-portable/SayIt-Watch-0.3.0-dev.14-windows-wear-os-bundle.zip` 为 25,068,933 bytes，SHA-256 `1DC246300EF69B862781ED647C12DCBE86317A223F57BE42764766CC7C55654E`；独立 APK `dist-portable/SayIt-Watch-0.3.0-dev.14.apk` 为 20,765,930 bytes，SHA-256 同上。ZIP 共 34 个文件条目，33 条内部 SHA-256 独立复算全部一致，包内 APK 哈希一致，未带配置、Token、凭证、接收录音、keystore 或 AAB。包内 Windows EXE 继续复用已验收提交 `e33b5361c3517f35d75bf210bfc1077d4f730658`，其 SHA-256 为 `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`。
-- **验收边界**：源码、安装拒绝/放行逻辑和 APK 构建通过；Galaxy Watch 7 的既有链路证据不因本轮失效。但尚无非 Samsung Wear OS 真机，因此 Pixel/Xiaomi/OnePlus/OPPO/TicWatch 等具体型号只能标为目标兼容，不能标为 VERIFIED。未获得新的 push、merge、tag 或 Release 授权，本轮先保留本地提交/产物。
+- PM 全量 `testDebugUnitTest` 为 28 suites / 253 tests / 0 failures / 0 errors / 0 skipped；`lintDebug` 为 0 errors / 38 warnings，`assembleDebug` 成功。APK 二进制读回 versionName `0.3.0-dev.14`、versionCode 18、minSdk 30、targetSdk 34，三项 required feature 与 standalone=true 均真实存在；APK SHA-256 `9ECE4EB9EF72F2EC91CEA6A732244B64EFBF210CB568E9443D3B531FBC274C67`。
+- 为满足“不覆盖现在版本”，真机使用独立测试包 `com.sayit.watch.universaltest` / `0.3.0-dev.14-sidecar`，与原 `com.sayit.watch.debug` dev.13 并存。安装前后旧包 versionCode 17、versionName dev.13、`lastUpdateTime=2026-09-26 16:55:32` 均未变化。SM-L310/API 36 读回 Watch、麦克风、Wi-Fi 三项 feature；并排包完成认证连接、2 秒真实录音和上传，Windows 于 `20:28:55.486 -07:00` 收到新的 83,244-byte WAV。截图和元数据见 `docs/evidence/wear-os-dev14-watch7-sidecar/`，接收音频本身未提交。
+- 当前实现提交为 `1cbbd08a7df9c82c27e130ea1cb81e6ef266816e`。统一测试包 `dist-portable/SayIt-Watch-0.3.0-dev.14-windows-wear-os-bundle.zip` 为 25,069,007 bytes，SHA-256 `0E6D9BB63A1163D340D103F23BCE7D00DA76A4D280520E769D181BDEAFF19574`；独立 APK `dist-portable/SayIt-Watch-0.3.0-dev.14.apk` 为 20,765,930 bytes，SHA-256 `9ECE4EB9EF72F2EC91CEA6A732244B64EFBF210CB568E9443D3B531FBC274C67`。ZIP 共 34 个文件条目，33 条内部 SHA-256 独立复算全部一致，包内脚本含 snake_case 修复，未带配置、Token、凭证、接收录音、keystore 或 AAB。包内 Windows EXE 继续复用已验收提交 `e33b5361c3517f35d75bf210bfc1077d4f730658`，其 SHA-256 为 `A56442CF489B765355933FA7930448997F0B661C1D2ED071570496C240CB6B0B`。
+- **验收边界**：通用构建已在现有 Galaxy Watch7 上以并排包完成安装、连接、录音和上传，且旧版本未覆盖；但尚无非 Samsung Wear OS 真机，因此 Pixel/Xiaomi/OnePlus/OPPO/TicWatch 等具体型号只能标为目标兼容，不能标为 VERIFIED。未获得新的 push、merge、tag 或 Release 授权，本轮先保留本地提交/产物。
 
 ## Latest 快速安装测试包与 README（2026-09-26）
 
