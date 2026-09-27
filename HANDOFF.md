@@ -1,5 +1,13 @@
 # SayIt Watch Transport handoff
 
+## GitHub `main` 合并交接（2026-09-26）
+
+- 用户已明确授权把 `codex/watch-connection-r7` 合并到公开仓库 `Suzixuan/SayIt-Watch` 的 `main`。合并前公开 `main` 为 `969f1c9692f7569b6e196e1ab6b9d6106325492a`，功能与文档审核基线为 `b60d58cb920e6cb7f7f3bbf592049202d38d6d6e`；两侧共同内容基线为 `b9b8836319cce2ada13e4da190d26fe1a948bfda`，`main` 独有的两个提交仅为既有 PR 合并记录，文件树无额外变化，合并预测无内容冲突。
+- 本次进入 `main` 的产品范围是 Watch 前台恢复、双电脑候选增量发布、电脑选择器与实时在线列表、本地电脑别名和 dev.13 触控/圆屏安全区修复，以及对应冻结设计、真机证据、README 截图和 CHANGELOG。没有合并 APK/AAB、Token、录音、`.env`、`local.properties`、安装包或构建缓存。
+- 复用未变化源码的 PM 验证：27 suites / 246 tests / 0 failures / 0 errors / 0 skipped，lint 0 errors / 38 warnings，Debug build 成功；最终 APK SHA-256 `174BAEC8F03A00FB215281473DC855DC77D63DFF3C7E7461F2F5714C2F1BA265`。仓库交接检查扫描 19,968 个文件，0 failure；README 16 个本地引用，0 缺失。
+- 合并不改变未完成口径：三星 T9 真实昵称输入/保存/恢复仍待用户手动体验；R12-C 双向真实录音路由、R12-D 重复检查、R12-E 真实转腕观察仍未全部关闭；这次是源码与文档合并，不是 Release、tag 或正式部署。
+- 回滚边界：若合并后发现阻断问题，保留历史并对本次 GitHub merge commit 执行 `git revert -m 1 <merge-sha>`；不得 force-push 或改写公开 `main` 历史。实际 merge SHA 以 GitHub 合并后远端读回为准。
+
 ## 自定义入口真机触控与安全区修复：1C-PM-UI-02@R5（2026-09-26，dev.13，部分真机通过）
 
 - dev.12 真机暴露两项核心偏差：整卡 `combinedClickable` 抢走嵌套图标点击，铅笔可见但点了不进入；滚动内容内部的底部 padding 没有缩小视口，两台电脑时关闭键覆盖“重新开始”，自定义页同样会覆盖名称卡片。candidate.6 保留为否决证据。
