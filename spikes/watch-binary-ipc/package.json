@@ -16,6 +16,6 @@
   "devDependencies": {
     "@tauri-apps/cli": "2.10.1",
     "vite": "^6.0.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.12"
   }
 }
